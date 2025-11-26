@@ -8,8 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { LogOut, Mail, X, Loader2, ArrowLeft, KeyRound } from "lucide-react"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils" // ✅ เพิ่ม import cn
 
-export default function AuthButton() {
+// ✅ เพิ่ม Interface รับค่า isCollapsed
+interface AuthButtonProps {
+    isCollapsed?: boolean;
+}
+
+export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
     // Create Supabase Client
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,6 +25,9 @@ export default function AuthButton() {
     const [user, setUser] = useState<any>(null)
     const [showModal, setShowModal] = useState(false)
     
+    // Modal States for Sign Out Confirmation
+    const [showSignOutModal, setShowSignOutModal] = useState(false)
+
     // State for Form
     const [email, setEmail] = useState("")
     const [otpToken, setOtpToken] = useState("")
@@ -27,31 +36,25 @@ export default function AuthButton() {
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState<string | null>(null)
 
-    // 🔥 เพิ่มตัวแปรจำ ID ของ User คนล่าสุด (เพื่อกัน Toast เด้งซ้ำ)
     const lastUserId = useRef<string | null>(null)
 
     useEffect(() => {
-        // 1. Check current User (Init)
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             setUser(session?.user || null)
             if (session?.user) {
-                lastUserId.current = session.user.id // จำไว้ว่าคนนี้ Login อยู่แล้วนะ
+                lastUserId.current = session.user.id
             }
         }
         checkUser()
 
-        // 2. Listen for login/logout events
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             const currentUserId = session?.user?.id || null
 
-            // 🔥 เช็คว่า: ถ้าเป็น User คนเดิม (และไม่ใช่การ Logout) -> ไม่ต้องทำอะไร
-            // (แก้ปัญหา Toast เด้งตอนสลับ Tab)
             if (_event === 'SIGNED_IN' && currentUserId === lastUserId.current) {
                 return 
             }
 
-            // อัปเดต User ปัจจุบัน
             lastUserId.current = currentUserId 
             setUser(session?.user || null)
 
@@ -93,8 +96,6 @@ export default function AuthButton() {
         setLoading(true)
         setMessage(null)
 
-        // สำหรับ OTP ไม่จำเป็นต้องใช้ emailRedirectTo ถ้าจะให้ User กรอกรหัส
-        // แต่ใส่ไว้เผื่อ User อยากกดลิงก์
         const redirectTo = `${window.location.origin}/auth/callback`
 
         const { error } = await supabase.auth.signInWithOtp({
@@ -134,48 +135,93 @@ export default function AuthButton() {
             setLoading(false)
         } else {
             toast.success("Verified successfully!")
-            // onAuthStateChange จะทำงานต่อเอง
         }
     }
 
-    const handleLogout = async () => {
+    const confirmLogout = async () => {
         await supabase.auth.signOut()
+        setShowSignOutModal(false)
     }
 
     // --- Render ---
     
     if (user) {
         return (
-            <div className="flex items-center gap-3 px-2 w-full">
-                <Avatar className="h-8 w-8 border border-zinc-700">
-                    <AvatarImage src={user.user_metadata?.avatar_url} />
-                    <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 overflow-hidden hidden md:block">
-                    <p className="text-sm font-medium text-white truncate">
-                        {user.user_metadata?.full_name || "User"}
-                    </p>
-                    <button onClick={handleLogout} className="text-xs text-zinc-500 hover:text-white transition-colors text-left">
-                        Sign Out
-                    </button>
+            <>
+                <div className={cn("flex items-center gap-3 transition-all w-full", isCollapsed ? "flex-col justify-center px-0" : "px-2")}>
+                    <Avatar className="h-8 w-8 border border-zinc-700">
+                        <AvatarImage src={user.user_metadata?.avatar_url} />
+                        <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    
+                    {!isCollapsed && (
+                        <div className="flex-1 overflow-hidden hidden md:block">
+                            <p className="text-sm font-medium text-white truncate">
+                                {user.user_metadata?.full_name || "User"}
+                            </p>
+                            <button onClick={() => setShowSignOutModal(true)} className="text-xs text-zinc-500 hover:text-white transition-colors text-left">
+                                Sign Out
+                            </button>
+                        </div>
+                    )}
+                    
+                    <Button 
+                        variant="ghost" 
+                        size={isCollapsed ? "icon" : "icon"} 
+                        onClick={() => setShowSignOutModal(true)} 
+                        className={cn("text-zinc-400 hover:text-white hover:bg-zinc-800", !isCollapsed && "md:hidden")}
+                    >
+                        <LogOut className="h-4 w-4" />
+                    </Button>
                 </div>
-                <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-zinc-400 hover:text-white md:hidden">
-                    <LogOut className="h-4 w-4" />
-                </Button>
-            </div>
+
+                {/* Sign Out Confirmation Modal */}
+                {showSignOutModal && (
+                    <div 
+                        className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
+                        onClick={() => setShowSignOutModal(false)}
+                    >
+                        <div 
+                            className="relative w-full max-w-sm p-6 rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl animate-in zoom-in-95" 
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <h3 className="text-lg font-semibold text-white mb-2">Sign Out</h3>
+                            <p className="text-sm text-zinc-400 mb-6">Are you sure you want to sign out?</p>
+                            <div className="flex justify-end gap-3">
+                                <Button variant="outline" onClick={() => setShowSignOutModal(false)} className="border-zinc-800 bg-transparent hover:bg-zinc-900 text-zinc-300 hover:text-white">
+                                    Cancel
+                                </Button>
+                                <Button onClick={confirmLogout} className="bg-white text-black hover:bg-zinc-200">
+                                    Confirm
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </>
         )
     }
 
     return (
         <>
-            <Button onClick={() => setShowModal(true)} className="w-full bg-white text-black hover:bg-zinc-200 gap-2">
+            {/* ✅ ปุ่ม Sign In ปรับตัวตาม isCollapsed */}
+            <Button 
+                onClick={() => setShowModal(true)} 
+                className={cn(
+                    "bg-white text-black hover:bg-zinc-200 transition-all",
+                    isCollapsed ? "w-9 h-9 p-0 rounded-full justify-center" : "w-full gap-2"
+                )}
+                title="Sign In"
+            >
                 <LogOut className="h-4 w-4 rotate-180" />
-                Sign In
+                {!isCollapsed && <span>Sign In</span>}
             </Button>
 
+            {/* Login Modal */}
             {showModal && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
+                    // ✅ แก้ z-index เป็น 999 ให้ทับทุกอย่างแน่นอน
+                    className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
                     onClick={() => setShowModal(false)}
                 >
                     <div
