@@ -1,7 +1,8 @@
 import { Portfolio, Position } from "./types";
-import { supabase } from "./supabase";
+import { createClient } from "./server-supabase";
 
 export async function fetchPortfoliosFromSupabase(): Promise<Portfolio[]> {
+    const supabase = await createClient();
     const { data, error } = await supabase.from('positions').select('*');
 
     if (error) {
