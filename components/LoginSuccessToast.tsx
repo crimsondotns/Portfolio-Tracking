@@ -15,6 +15,12 @@ export function LoginSuccessToast() {
             newSearchParams.delete("login");
             const newPath = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : "");
             router.replace(newPath);
+        } else if (searchParams.get("error") === "auth_failed") {
+            toast.error("Login Failed");
+            const newSearchParams = new URLSearchParams(searchParams.toString());
+            newSearchParams.delete("error");
+            const newPath = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : "");
+            router.replace(newPath);
         }
     }, [searchParams, router]);
 
