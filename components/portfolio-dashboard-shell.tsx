@@ -10,12 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, Globe, Wallet, ChevronLeft, ChevronRight, Copy, ChevronUp, ChevronDown, LineChart, LayoutGrid, List, ChevronsUpDown, LogIn, ArrowUp, Triangle, MoreVertical, Trash2, BarChart2, Eye, EyeOff, Fuel, Gauge } from "lucide-react";
+import { Search, RefreshCw, Globe, Wallet, ChevronLeft, ChevronRight, Copy, ChevronUp, ChevronDown, List, LayoutGrid, ChevronsUpDown, Triangle, MoreVertical, Trash2, BarChart2, Eye, EyeOff, Fuel, Gauge, ArrowUp } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/ui/sparkline";
 import { supabase } from "@/lib/supabase";
-import { LoginModal } from "@/components/login-modal";
+import AuthButton from "@/components/ui/AuthButton"; // ✅ เรียกใช้ปุ่มตัวเทพ
 
 // --- Helper Function for Price Formatting ---
 const formatCryptoPrice = (price: number) => {
@@ -69,17 +69,11 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
     const mobileTarget = useRef<HTMLDivElement>(null);
     const desktopTarget = useRef<HTMLTableRowElement>(null);
 
-    // Auth State
-    const [user, setUser] = useState<any>(null);
-
     // Back to Top State
     const [showBackToTop, setShowBackToTop] = useState(false);
 
     // Menu State
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-
-    // Login Modal State
-    const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
     // Privacy Mode
     const [isPrivacyMode, setIsPrivacyMode] = useState(false);
@@ -111,21 +105,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
         fetchGas();
     }, []);
 
-    useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            setUser(session?.user ?? null);
-            if (event === 'SIGNED_IN') {
-                toast.success("Login confirmed");
-                // Reload the page to ensure all states are fresh
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
-            }
-        });
-
-        return () => subscription.unsubscribe();
-    }, []);
-
     // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -136,43 +115,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
         document.addEventListener('click', handleClickOutside);
         return () => document.removeEventListener('click', handleClickOutside);
     }, [openMenuId]);
-
-    const handleLogin = () => {
-        setIsLoginModalOpen(true);
-    };
-
-    const handleGoogleLogin = async () => {
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-                redirectTo: `https://maharaja888.vercel.app/auth/callback`,
-            },
-        });
-        if (error) {
-            toast.error("Error logging in: " + error.message);
-        }
-    };
-
-    const handleEmailLogin = async (email: string) => {
-        const { error } = await supabase.auth.signInWithOtp({
-            email,
-            options: {
-                emailRedirectTo: `https://maharaja888.vercel.app/auth/callback`,
-            },
-        });
-
-        if (error) {
-            toast.error("Error sending magic link: " + error.message);
-            throw error;
-        } else {
-            toast.success("Magic link sent! Check your email.");
-        }
-    };
-
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        toast.success("Logged out successfully");
-    };
 
     const handleDelete = async (id: string) => {
         const { error } = await supabase.from('positions').delete().eq('id', id);
@@ -351,19 +293,10 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                         )}
                     </div>
 
-                    {user ? (
-                        <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                                <AvatarImage src={user.user_metadata.avatar_url} />
-                                <AvatarFallback>{user.email?.charAt(0).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-xs h-7 px-2">Sign Out</Button>
-                        </div>
-                    ) : (
-                        <Button variant="outline" size="sm" onClick={handleLogin} className="text-xs h-7 px-2 gap-1 border-zinc-700 bg-zinc-800 text-white hover:bg-zinc-700">
-                            <LogIn className="h-3 w-3" /> Sign In
-                        </Button>
-                    )}
+                    {/* 🔥 ใช้ AuthButton แทนปุ่มเดิม (Mobile) */}
+                    <div className="w-fit">
+                        <AuthButton />
+                    </div>
                 </div>
                 <Select value={selectedPortfolioId} onValueChange={setSelectedPortfolioId}>
                     <SelectTrigger className="w-full bg-zinc-900 border-zinc-800 text-white">
@@ -462,29 +395,10 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
 
                 {/* Desktop Auth Button */}
                 <div className={cn("pt-4 border-t border-white/10", !isCollapsed ? "mt-0" : "mt-auto")}>
-                    {user ? (
-                        <div className={cn("flex items-center gap-3", isCollapsed ? "justify-center" : "")}>
-                            <Avatar className="h-8 w-8">
-                                <AvatarImage src={user.user_metadata.avatar_url} />
-                                <AvatarFallback>{user.email?.charAt(0).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            {!isCollapsed && (
-                                <div className="flex-1 overflow-hidden">
-                                    <p className="text-sm font-medium text-white truncate">{user.user_metadata.full_name || user.email}</p>
-                                    <button onClick={handleLogout} className="text-xs text-zinc-500 hover:text-white transition-colors text-left w-full">Sign Out</button>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <Button
-                            variant="outline"
-                            className={cn("w-full border-zinc-700 bg-zinc-800 text-white hover:bg-zinc-700", isCollapsed ? "px-0" : "")}
-                            onClick={handleLogin}
-                        >
-                            <LogIn className="h-4 w-4" />
-                            {!isCollapsed && <span className="ml-2">Sign In</span>}
-                        </Button>
-                    )}
+                    <div className={cn(isCollapsed ? "flex justify-center" : "")}>
+                        {/* 🔥 เรียกใช้ปุ่มตัวเทพที่นี่ */}
+                        <AuthButton />
+                    </div>
                 </div>
             </aside>
 
@@ -521,7 +435,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                         />
                     </div>
 
-                    {/* Toolbar: Search + Refresh + View Toggle */}
+                    {/* Toolbar */}
                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
                         <div className="flex items-center gap-2 w-full md:w-auto">
                             <div className="relative flex-1 md:w-72">
@@ -544,7 +458,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                             </Button>
                         </div>
 
-                        {/* View Toggle Buttons */}
                         <div className="flex bg-zinc-900 rounded-md border border-zinc-800 p-1 self-end md:self-auto">
                             <Button
                                 variant="ghost"
@@ -565,10 +478,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                         </div>
                     </div>
 
-
-                    {/* Content Area */}
-
-                    {/* 1. Desktop Table View */}
+                    {/* Tables & Grids code ... (เหมือนเดิม) */}
                     {viewMode === 'list' && (
                         <div className="hidden md:block rounded-lg border border-white/10 bg-zinc-950/50 min-h-[500px]">
                             <Table disableOverflow>
@@ -651,7 +561,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                                                     <div>
                                                         <div className="font-medium text-white">{pos.token.symbol}</div>
                                                         <div className="mt-1 flex items-center gap-2">
-                                                            {/* 🔥 เพิ่ม Icon Globe ใน Badge ตรงนี้ */}
                                                             <Badge variant="secondary" className="bg-zinc-900 text-zinc-400 hover:bg-zinc-800 border-zinc-800 font-normal text-[10px] px-1.5 py-0 h-5 gap-1">
                                                                 <Globe className="h-3 w-3" />
                                                                 {pos.token.network}
@@ -753,7 +662,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                         </div>
                     )}
 
-                    {/* 2. Desktop Card Grid */}
                     {viewMode === 'card' && (
                         <div className="hidden md:grid grid-cols-2 lg:grid-cols-3 gap-4">
                             {visiblePositions.map((pos) => (
@@ -768,7 +676,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                                     getPnLColor={getPnLColor}
                                 />
                             ))}
-                            {/* Mobile/Card Sentinel (shared logic, but placed here for card view structure) */}
                             {visiblePositions.length < sortedPositions.length && (
                                 <div ref={mobileTarget} className="col-span-full text-center py-4 text-zinc-500">
                                     Loading more...
@@ -777,7 +684,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                         </div>
                     )}
 
-                    {/* 3. Mobile Cards */}
                     <div className="md:hidden space-y-4 pb-20">
                         {visiblePositions.map((pos) => (
                             <PortfolioPositionsMobileCards
@@ -791,7 +697,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                                 getPnLColor={getPnLColor}
                             />
                         ))}
-                        {/* Mobile Sentinel */}
                         {visiblePositions.length < sortedPositions.length && (
                             <div ref={mobileTarget} className="text-center py-4 text-zinc-500">
                                 Loading more...
@@ -801,7 +706,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                 </div>
             </main>
 
-            {/* Back to Top Button */}
             {showBackToTop && (
                 <Button
                     variant="secondary"
@@ -812,18 +716,21 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                     <ArrowUp className="h-5 w-5" />
                 </Button>
             )}
-
-            <LoginModal
-                isOpen={isLoginModalOpen}
-                onClose={() => setIsLoginModalOpen(false)}
-                onGoogleLogin={handleGoogleLogin}
-                onEmailLogin={handleEmailLogin}
-            />
         </div>
     );
 }
 
-function SummaryCard({ title, value, subValue, highlight, isPnL, pnlValue }: { title: string, value: string | ReactNode, subValue?: string | ReactNode, highlight?: boolean, isPnL?: boolean, pnlValue?: number }) {
+// --- Components Helper (No changes, kept for completeness) ---
+interface SummaryCardProps {
+    title: string;
+    value: ReactNode;
+    subValue?: ReactNode;
+    highlight?: boolean;
+    isPnL?: boolean;
+    pnlValue?: number;
+}
+
+function SummaryCard({ title, value, subValue, highlight, isPnL, pnlValue }: SummaryCardProps) {
     return (
         <Card className="bg-zinc-950 border-white/10">
             <CardHeader className="flex flex-col items-center justify-center space-y-0 pb-2">
@@ -863,7 +770,6 @@ function PortfolioPositionsMobileCards({
     return (
         <Card className="bg-zinc-950 border-white/10">
             <CardContent className="p-4">
-                {/* Row 1: Token info & Value */}
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8 bg-zinc-800">
@@ -890,7 +796,6 @@ function PortfolioPositionsMobileCards({
 
                 <div className="flex items-center justify-between pt-3 border-t border-white/5">
                     <div className="flex items-center gap-2">
-                        {/* 🔥 เพิ่ม Icon Globe ใน Badge ตรงนี้ด้วย */}
                         <Badge variant="secondary" className="bg-zinc-900 text-zinc-400 hover:bg-zinc-800 border-zinc-800 font-normal text-xs gap-1">
                             <Globe className="h-3 w-3" />
                             {pos.token.network}

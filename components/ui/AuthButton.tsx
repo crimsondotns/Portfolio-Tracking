@@ -6,13 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { LogOut, Mail, X, Loader2, ArrowLeft } from "lucide-react"
+import { LogOut, Mail, X, Loader2, ArrowLeft, KeyRound } from "lucide-react"
 import { toast } from "sonner"
 
 export default function AuthButton() {
-    console.log("Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
-  console.log("Redirect URL:", typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : "Server Side");
-    // Create Supabase Client
+    // สร้าง Supabase Client
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -20,28 +18,30 @@ export default function AuthButton() {
 
     const [user, setUser] = useState<any>(null)
     const [showModal, setShowModal] = useState(false)
+    
+    // State สำหรับ Form
     const [email, setEmail] = useState("")
+    const [otpToken, setOtpToken] = useState("")
+    const [step, setStep] = useState<'email' | 'verify'>('email')
+    
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState<string | null>(null)
 
-    // New State for OTP
-    const [otpToken, setOtpToken] = useState("")
-    const [step, setStep] = useState<'email' | 'verify'>('email')
-
     useEffect(() => {
-        // 1. Check current User
+        // 1. เช็ค User ปัจจุบัน
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             setUser(session?.user || null)
         }
         checkUser()
 
-        // 2. Listen for login/logout events
+        // 2. ฟัง event login/logout
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setUser(session?.user || null)
 
             if (_event === 'SIGNED_IN') {
                 toast.success("Login confirmed!")
+                // ปิด Modal และ Refresh หน้าจอเพื่อให้ Server โหลดข้อมูลใหม่
                 setTimeout(() => {
                     setShowModal(false)
                     window.location.reload()
@@ -54,13 +54,18 @@ export default function AuthButton() {
         return () => subscription.unsubscribe()
     }, [supabase])
 
-    // Google Login
+    // Google Login (แก้ไข redirectTo ให้ถูกต้อง 100%)
     const handleGoogleLogin = async () => {
         setLoading(true)
+        // ใช้ window.location.origin เพื่อให้รองรับทั้ง localhost และ vercel อัตโนมัติ
+        const redirectTo = `${window.location.origin}/auth/callback`
+        
+        console.log("🚀 Logging in with Google, redirecting to:", redirectTo)
+
         await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-                redirectTo: `https://maharaja888.vercel.app/auth/callback`,
+                redirectTo: redirectTo, 
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent',
@@ -69,17 +74,18 @@ export default function AuthButton() {
         })
     }
 
-    // Send OTP
+    // Send OTP / Magic Link
     const handleSendOtp = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
         setMessage(null)
 
+        const redirectTo = `${window.location.origin}/auth/callback`
+
         const { error } = await supabase.auth.signInWithOtp({
             email,
             options: {
-                // Remove emailRedirectTo to encourage OTP behavior if configured, 
-                // or just to rely on the code sent in the email.
+                emailRedirectTo: redirectTo,
             },
         })
 
@@ -87,15 +93,16 @@ export default function AuthButton() {
             setMessage("Error: " + error.message)
             toast.error(error.message)
         } else {
-            const msg = "OTP sent! Check your email."
+            const msg = "Check your email for code/link."
             setMessage(`✅ ${msg}`)
             toast.success(msg)
+            // ไปหน้ากรอกรหัส
             setStep('verify')
         }
         setLoading(false)
     }
 
-    // Verify OTP
+    // Verify OTP (กรอกรหัส 6 หลัก)
     const handleVerifyOtp = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
@@ -113,7 +120,7 @@ export default function AuthButton() {
             setLoading(false)
         } else {
             toast.success("Verified successfully!")
-            // Success handled by onAuthStateChange
+            // ไม่ต้องทำอะไรต่อ เดี๋ยว onAuthStateChange จัดการ Refresh ให้
         }
     }
 
@@ -121,29 +128,33 @@ export default function AuthButton() {
         await supabase.auth.signOut()
     }
 
-    // Render
+    // --- ส่วนแสดงผล (Render) ---
+    
+    // 1. ถ้าล็อกอินแล้ว -> โชว์ Profile + ปุ่ม Logout
     if (user) {
         return (
-            <div className="flex items-center gap-3 px-2">
-                <div className="flex items-center gap-2 text-sm text-zinc-400">
-                    <Avatar className="h-8 w-8 border border-zinc-700">
-                        <AvatarImage src={user.user_metadata?.avatar_url} />
-                        <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div className="hidden flex-col items-start text-xs sm:flex">
-                        <span className="font-medium text-zinc-200 truncate max-w-[100px]">
-                            {user.user_metadata?.full_name || "User"}
-                        </span>
-                        <span className="text-zinc-500 truncate max-w-[120px]">{user.email}</span>
-                    </div>
+            <div className="flex items-center gap-3 px-2 w-full">
+                <Avatar className="h-8 w-8 border border-zinc-700">
+                    <AvatarImage src={user.user_metadata?.avatar_url} />
+                    <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 overflow-hidden hidden md:block">
+                    <p className="text-sm font-medium text-white truncate">
+                        {user.user_metadata?.full_name || "User"}
+                    </p>
+                    <button onClick={handleLogout} className="text-xs text-zinc-500 hover:text-white transition-colors text-left">
+                        Sign Out
+                    </button>
                 </div>
-                <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800" title="Sign Out">
+                {/* Mobile Logout Icon */}
+                <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-zinc-400 hover:text-white md:hidden">
                     <LogOut className="h-4 w-4" />
                 </Button>
             </div>
         )
     }
 
+    // 2. ถ้ายังไม่ล็อกอิน -> โชว์ปุ่ม Sign In + Modal
     return (
         <>
             <Button onClick={() => setShowModal(true)} className="w-full bg-white text-black hover:bg-zinc-200 gap-2">
@@ -151,14 +162,14 @@ export default function AuthButton() {
                 Sign In
             </Button>
 
-            {/* --- Modal Overlay --- */}
+            {/* Modal Overlay */}
             {showModal && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
                     onClick={() => setShowModal(false)}
                 >
                     <div
-                        className="relative w-full max-w-md animate-in fade-in zoom-in-95 duration-200"
+                        className="relative w-full max-w-md animate-in zoom-in-95 duration-200"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <button
@@ -174,14 +185,14 @@ export default function AuthButton() {
                                     {step === 'email' ? 'Sign in' : 'Verify OTP'}
                                 </CardTitle>
                                 <CardDescription className="text-zinc-400">
-                                    {step === 'email' ? 'Choose your preferred sign in method' : `Enter the 6-digit code sent to ${email}`}
+                                    {step === 'email' ? 'Choose your preferred sign in method' : `Enter the code sent to ${email}`}
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="grid gap-4">
 
                                 {step === 'email' ? (
                                     <>
-                                        {/* Google Button */}
+                                        {/* Google */}
                                         <Button variant="outline" className="w-full border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-white" onClick={handleGoogleLogin} disabled={loading}>
                                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
                                                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
@@ -195,15 +206,11 @@ export default function AuthButton() {
                                         </Button>
 
                                         <div className="relative">
-                                            <div className="absolute inset-0 flex items-center">
-                                                <span className="w-full border-t border-zinc-800" />
-                                            </div>
-                                            <div className="relative flex justify-center text-xs uppercase">
-                                                <span className="bg-zinc-950 px-2 text-zinc-500">Or continue with</span>
-                                            </div>
+                                            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-zinc-800" /></div>
+                                            <div className="relative flex justify-center text-xs uppercase"><span className="bg-zinc-950 px-2 text-zinc-500">Or continue with</span></div>
                                         </div>
 
-                                        {/* Email Form */}
+                                        {/* Email */}
                                         <form onSubmit={handleSendOtp} className="grid gap-2">
                                             <Input
                                                 id="email"
@@ -223,7 +230,7 @@ export default function AuthButton() {
                                     </>
                                 ) : (
                                     <>
-                                        {/* OTP Form */}
+                                        {/* OTP */}
                                         <form onSubmit={handleVerifyOtp} className="grid gap-2">
                                             <Input
                                                 id="otp"
