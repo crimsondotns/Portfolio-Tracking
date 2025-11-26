@@ -58,7 +58,7 @@ export default function AuthButton() {
         await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
+                redirectTo: `https://maharaja888.vercel.app/auth/callback`,
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent',

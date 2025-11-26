@@ -145,7 +145,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
+                redirectTo: `https://maharaja888.vercel.app/auth/callback`,
             },
         });
         if (error) {
@@ -157,7 +157,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
         const { error } = await supabase.auth.signInWithOtp({
             email,
             options: {
-                emailRedirectTo: `${window.location.origin}/auth/callback`,
+                emailRedirectTo: `https://maharaja888.vercel.app/auth/callback`,
             },
         });
 
