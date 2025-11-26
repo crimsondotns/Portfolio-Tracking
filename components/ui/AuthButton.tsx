@@ -10,6 +10,8 @@ import { LogOut, Mail, X, Loader2, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 
 export default function AuthButton() {
+    console.log("Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+  console.log("Redirect URL:", typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : "Server Side");
     // Create Supabase Client
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
