@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition, useEffect, useRef, useMemo, ReactNode } from "react";
+import { useState, useTransition, useEffect, useRef, useMemo, ReactNode, useCallback } from "react";
 import { Portfolio, Position } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,38 +14,26 @@ import { Search, RefreshCw, Globe, Wallet, ChevronLeft, ChevronRight, Copy, Chev
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/ui/sparkline";
-import { supabase } from "@/lib/supabase";
-import AuthButton from "@/components/ui/AuthButton"; // ✅ เรียกใช้ปุ่มตัวเทพ
+import { createBrowserClient } from "@supabase/ssr"; // ✅ ใช้ createBrowserClient เพื่อจัดการ Cookies อัตโนมัติ
+import AuthButton from "@/components/ui/AuthButton";
 
 // --- Helper Function for Price Formatting ---
 const formatCryptoPrice = (price: number) => {
     if (price === 0) return "$0.00";
     if (price >= 1) return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price);
-
     if (price >= 0.0001) {
         return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(price);
     }
-
     const priceStr = price.toFixed(20).replace(/0+$/, '');
     const match = priceStr.match(/\.0+/);
-
     if (match) {
         const zeroCount = match[0].length - 1;
         const significantDigits = priceStr.substring(match[0].length + 1).substring(0, 4);
-
-        const subscripts: { [key: number]: string } = {
-            4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉', 10: '₁₀', 11: '₁₁', 12: '₁₂'
-        };
-
+        const subscripts: { [key: number]: string } = { 4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉', 10: '₁₀', 11: '₁₁', 12: '₁₂' };
         if (subscripts[zeroCount]) {
-            return (
-                <span>
-                    $0.0<span className="text-[0.7em] opacity-80">{zeroCount}</span>{significantDigits}
-                </span>
-            );
+            return (<span>$0.0<span className="text-[0.7em] opacity-80">{zeroCount}</span>{significantDigits}</span>);
         }
     }
-
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 8 }).format(price);
 };
 
@@ -53,37 +41,129 @@ interface PortfolioDashboardShellProps {
     portfolios: Portfolio[];
 }
 
-export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellProps) {
+export function PortfolioDashboardShell({ portfolios: initialPortfolios }: PortfolioDashboardShellProps) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
-    const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(portfolios[0]?.id || "all");
+    
+    // ✅ สร้าง Supabase Client สำหรับ Client Component
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    // ✅ ใช้ State เก็บข้อมูลแทน Props (เพื่อให้เราอัปเดตเองได้โดยไม่ต้องรีเฟรชหน้า)
+    const [portfolios, setPortfolios] = useState<Portfolio[]>(initialPortfolios);
+    
+    const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(initialPortfolios[0]?.id || "all");
     const [searchQuery, setSearchQuery] = useState("");
-
     const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
-
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [sortConfig, setSortConfig] = useState<{ key: keyof Position | 'token', direction: 'desc' | 'asc' } | null>({ key: 'pnlPercent', direction: 'desc' });
-
-    // Lazy Loading State
     const [visibleCount, setVisibleCount] = useState(50);
     const mobileTarget = useRef<HTMLDivElement>(null);
     const desktopTarget = useRef<HTMLTableRowElement>(null);
-
-    // Back to Top State
+    const [user, setUser] = useState<any>(null);
     const [showBackToTop, setShowBackToTop] = useState(false);
-
-    // Menu State
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-
-    // Privacy Mode
     const [isPrivacyMode, setIsPrivacyMode] = useState(false);
-
-    // Sidebar Widgets State
     const [fngIndex, setFngIndex] = useState<{ value: string, value_classification: string } | null>(null);
     const [gasPrice, setGasPrice] = useState<number | null>(null);
 
+    // ✅ ฟังก์ชันดึงข้อมูลฝั่ง Client (Client-Side Fetching)
+    // ไม่กิน Quota Vercel Server Function เพราะยิงตรงไป Supabase
+    const fetchClientData = useCallback(async () => {
+        const { data, error } = await supabase.from('positions').select('*');
+        
+        if (error) {
+            console.error("Error fetching data:", error);
+            return;
+        }
+
+        if (!data) return;
+
+        // Map ข้อมูล (Logic เดียวกับ Server เพื่อให้ข้อมูลหน้าตาเหมือนเดิม)
+        const positions: Position[] = data.map((row: any) => {
+            const price = Number(row.price_usd) || 0;
+            const buyPrice = Number(row.entry_price) || 0;
+            const quantity = Number(row.quantity) || 0;
+            const invested = Number(row.invested_usd) || 0;
+            let pnlPercent = 0;
+            if (buyPrice > 0) pnlPercent = ((price - buyPrice) / buyPrice) * 100;
+            const currentValue = price * quantity;
+
+            return {
+                id: row.id,
+                token: {
+                    symbol: row.symbol,
+                    name: row.name,
+                    network: row.network,
+                    avatarUrl: (row.avatar_url && !row.avatar_url.includes("missing")) ? row.avatar_url : "https://via.placeholder.com/40",
+                    address: row.address,
+                    chartUrl: row.chart_url,
+                },
+                price: price,
+                quantity: quantity,
+                invested: invested,
+                value: currentValue,
+                buyPrice: buyPrice,
+                pnlPercent: pnlPercent,
+                portfolioName: row.portfolio_name || "Uncategorized",
+                sparkline: row.sparkline,
+            };
+        });
+
+        // Group ข้อมูลตาม Portfolio Name
+        const portfoliosMap = new Map<string, Position[]>();
+        positions.forEach(pos => {
+            const name = pos.portfolioName;
+            if (!portfoliosMap.has(name)) portfoliosMap.set(name, []);
+            portfoliosMap.get(name)?.push(pos);
+        });
+
+        const newPortfolios: Portfolio[] = Array.from(portfoliosMap.entries()).map(([name, positions]) => ({
+            id: name.toLowerCase().replace(/\s+/g, '-'),
+            name: name,
+            positions: positions,
+        })).sort((a, b) => a.name.localeCompare(b.name));
+
+        setPortfolios(newPortfolios);
+        
+        // ถ้า Portfolio ที่เลือกอยู่หายไป (เช่น ลบหมด) ให้ Reset กลับไปอันแรก
+        if (selectedPortfolioId !== "all" && !newPortfolios.find(p => p.id === selectedPortfolioId)) {
+             // ถ้ามีพอร์ตเหลือ ให้เลือกอันแรก ถ้าไม่มีเลย ให้เป็น all
+             if (newPortfolios.length > 0) setSelectedPortfolioId(newPortfolios[0].id);
+             else setSelectedPortfolioId("all");
+        }
+        
+    }, [supabase, selectedPortfolioId]);
+
+    // ✅ Listener สำหรับ Login/Logout แบบ Real-time
     useEffect(() => {
-        // Fetch Fear & Greed Index
+        // เช็ค User ปัจจุบันก่อน
+        const checkUser = async () => {
+            const { data: { session } } = await supabase.auth.getSession()
+            setUser(session?.user ?? null);
+        }
+        checkUser();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            setUser(session?.user ?? null);
+            
+            if (event === 'SIGNED_IN') {
+                // พอ Login ปุ๊บ ดึงข้อมูลใหม่ทันที (Client Fetch) หน้าไม่ขาว ไม่กระพริบ
+                fetchClientData(); 
+            } else if (event === 'SIGNED_OUT') {
+                // พอ Logout ปุ๊บ เคลียร์ข้อมูล (หรือดึงใหม่แบบ Guest ถ้ามี Public Data)
+                setPortfolios([]); 
+                fetchClientData(); 
+            }
+        });
+
+        return () => subscription.unsubscribe();
+    }, [supabase, fetchClientData]);
+
+    useEffect(() => {
+        // Fetch F&G และ Gas (เหมือนเดิม)
         const fetchFng = async () => {
             try {
                 const res = await fetch('https://api.alternative.me/fng/');
@@ -95,12 +175,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                 console.error("Failed to fetch F&G Index", e);
             }
         };
-
-        // Mock Gas Price (Randomized for demo)
-        const fetchGas = () => {
-            setGasPrice(Math.floor(Math.random() * 20) + 10);
-        };
-
+        const fetchGas = () => { setGasPrice(Math.floor(Math.random() * 20) + 10); };
         fetchFng();
         fetchGas();
     }, []);
@@ -116,6 +191,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
         return () => document.removeEventListener('click', handleClickOutside);
     }, [openMenuId]);
 
+    // แก้ไข handleDelete ให้เรียก fetchClientData แทน router.refresh
     const handleDelete = async (id: string) => {
         const { error } = await supabase.from('positions').delete().eq('id', id);
 
@@ -124,9 +200,8 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
         } else {
             toast.success("Position deleted successfully");
             setOpenMenuId(null);
-            startTransition(() => {
-                router.refresh();
-            });
+            // ✅ เรียก Client Fetch แทน router.refresh() ประหยัด Quota
+            fetchClientData(); 
         }
     };
 
@@ -135,14 +210,12 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
         setVisibleCount(50);
     }, [searchQuery, viewMode, sortConfig, selectedPortfolioId]);
 
-    // Auto Sort เมื่อเปลี่ยนเป็น Card View
     useEffect(() => {
         if (viewMode === 'card') {
             setSortConfig({ key: 'pnlPercent', direction: 'desc' });
         }
     }, [viewMode]);
 
-    // Back to Top Scroll Listener
     useEffect(() => {
         const handleScroll = () => {
             if (window.scrollY > 300) {
@@ -151,7 +224,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                 setShowBackToTop(false);
             }
         };
-
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
@@ -166,9 +238,11 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
     };
 
     const handleRefresh = () => {
-        startTransition(() => {
-            router.refresh();
-            toast.success("Data refreshed");
+        // ✅ ปุ่ม Refresh ก็ดึงผ่าน Client เหมือนกัน
+        toast.promise(fetchClientData(), {
+            loading: 'Refreshing data...',
+            success: 'Data refreshed',
+            error: 'Failed to refresh'
         });
     };
 
@@ -214,7 +288,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
         return sortedPositions.slice(0, visibleCount);
     }, [sortedPositions, visibleCount]);
 
-    // Intersection Observer for Lazy Loading
+    // Intersection Observer
     useEffect(() => {
         const observer = new IntersectionObserver(
             (entries) => {
@@ -293,7 +367,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                         )}
                     </div>
 
-                    {/* 🔥 ใช้ AuthButton แทนปุ่มเดิม (Mobile) */}
+                    {/* Auth Button */}
                     <div className="w-fit">
                         <AuthButton />
                     </div>
@@ -396,7 +470,6 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                 {/* Desktop Auth Button */}
                 <div className={cn("pt-4 border-t border-white/10", !isCollapsed ? "mt-0" : "mt-auto")}>
                     <div className={cn(isCollapsed ? "flex justify-center" : "")}>
-                        {/* 🔥 เรียกใช้ปุ่มตัวเทพที่นี่ */}
                         <AuthButton />
                     </div>
                 </div>
@@ -478,7 +551,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
                         </div>
                     </div>
 
-                    {/* Tables & Grids code ... (เหมือนเดิม) */}
+                    {/* Content Area: Tables & Cards */}
                     {viewMode === 'list' && (
                         <div className="hidden md:block rounded-lg border border-white/10 bg-zinc-950/50 min-h-[500px]">
                             <Table disableOverflow>
@@ -720,7 +793,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
     );
 }
 
-// --- Components Helper (No changes, kept for completeness) ---
+// --- Helper Components ---
 interface SummaryCardProps {
     title: string;
     value: ReactNode;

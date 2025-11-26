@@ -10,7 +10,7 @@ import { LogOut, Mail, X, Loader2, ArrowLeft, KeyRound } from "lucide-react"
 import { toast } from "sonner"
 
 export default function AuthButton() {
-    // สร้าง Supabase Client
+    // Create Supabase Client
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -19,7 +19,7 @@ export default function AuthButton() {
     const [user, setUser] = useState<any>(null)
     const [showModal, setShowModal] = useState(false)
     
-    // State สำหรับ Form
+    // State for Form
     const [email, setEmail] = useState("")
     const [otpToken, setOtpToken] = useState("")
     const [step, setStep] = useState<'email' | 'verify'>('email')
@@ -28,44 +28,41 @@ export default function AuthButton() {
     const [message, setMessage] = useState<string | null>(null)
 
     useEffect(() => {
-        // 1. เช็ค User ปัจจุบัน
+        // 1. Check current User
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             setUser(session?.user || null)
         }
         checkUser()
 
-        // 2. ฟัง event login/logout
+        // 2. Listen for login/logout events
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setUser(session?.user || null)
 
             if (_event === 'SIGNED_IN') {
                 toast.success("Login confirmed!")
-                // ปิด Modal และ Refresh หน้าจอเพื่อให้ Server โหลดข้อมูลใหม่
                 setTimeout(() => {
                     setShowModal(false)
-                    window.location.reload()
-                }, 1500)
-            } else if (_event === 'SIGNED_OUT') {
-                window.location.reload()
-            }
+                    // ❌ เอา window.location.reload() ออก เพื่อไม่ให้หน้ากระพริบ
+                    // ปล่อยให้หน้า Dashboard จับ event แล้วโหลดข้อมูลเอง
+                }, 1000)
+            } 
+            // ส่วน SIGNED_OUT ก็ไม่ต้อง reload เดี๋ยวหน้า Dashboard เคลียร์ข้อมูลเอง
         })
 
         return () => subscription.unsubscribe()
     }, [supabase])
 
-    // Google Login (แก้ไข redirectTo ให้ถูกต้อง 100%)
+    // Google Login
     const handleGoogleLogin = async () => {
         setLoading(true)
-        // ใช้ window.location.origin เพื่อให้รองรับทั้ง localhost และ vercel อัตโนมัติ
         const redirectTo = `${window.location.origin}/auth/callback`
-        
         console.log("🚀 Logging in with Google, redirecting to:", redirectTo)
 
         await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-                redirectTo: redirectTo, 
+                redirectTo: redirectTo,
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent',
@@ -74,7 +71,7 @@ export default function AuthButton() {
         })
     }
 
-    // Send OTP / Magic Link
+    // Send OTP
     const handleSendOtp = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
@@ -96,13 +93,12 @@ export default function AuthButton() {
             const msg = "Check your email for code/link."
             setMessage(`✅ ${msg}`)
             toast.success(msg)
-            // ไปหน้ากรอกรหัส
             setStep('verify')
         }
         setLoading(false)
     }
 
-    // Verify OTP (กรอกรหัส 6 หลัก)
+    // Verify OTP
     const handleVerifyOtp = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
@@ -120,7 +116,7 @@ export default function AuthButton() {
             setLoading(false)
         } else {
             toast.success("Verified successfully!")
-            // ไม่ต้องทำอะไรต่อ เดี๋ยว onAuthStateChange จัดการ Refresh ให้
+            // onAuthStateChange จะทำงานเอง
         }
     }
 
@@ -128,9 +124,8 @@ export default function AuthButton() {
         await supabase.auth.signOut()
     }
 
-    // --- ส่วนแสดงผล (Render) ---
+    // --- Render ---
     
-    // 1. ถ้าล็อกอินแล้ว -> โชว์ Profile + ปุ่ม Logout
     if (user) {
         return (
             <div className="flex items-center gap-3 px-2 w-full">
@@ -146,7 +141,6 @@ export default function AuthButton() {
                         Sign Out
                     </button>
                 </div>
-                {/* Mobile Logout Icon */}
                 <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-zinc-400 hover:text-white md:hidden">
                     <LogOut className="h-4 w-4" />
                 </Button>
@@ -154,7 +148,6 @@ export default function AuthButton() {
         )
     }
 
-    // 2. ถ้ายังไม่ล็อกอิน -> โชว์ปุ่ม Sign In + Modal
     return (
         <>
             <Button onClick={() => setShowModal(true)} className="w-full bg-white text-black hover:bg-zinc-200 gap-2">
@@ -162,7 +155,6 @@ export default function AuthButton() {
                 Sign In
             </Button>
 
-            {/* Modal Overlay */}
             {showModal && (
                 <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
@@ -192,7 +184,6 @@ export default function AuthButton() {
 
                                 {step === 'email' ? (
                                     <>
-                                        {/* Google */}
                                         <Button variant="outline" className="w-full border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-white" onClick={handleGoogleLogin} disabled={loading}>
                                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
                                                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
@@ -210,7 +201,6 @@ export default function AuthButton() {
                                             <div className="relative flex justify-center text-xs uppercase"><span className="bg-zinc-950 px-2 text-zinc-500">Or continue with</span></div>
                                         </div>
 
-                                        {/* Email */}
                                         <form onSubmit={handleSendOtp} className="grid gap-2">
                                             <Input
                                                 id="email"
@@ -230,7 +220,6 @@ export default function AuthButton() {
                                     </>
                                 ) : (
                                     <>
-                                        {/* OTP */}
                                         <form onSubmit={handleVerifyOtp} className="grid gap-2">
                                             <Input
                                                 id="otp"
