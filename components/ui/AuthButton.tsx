@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { LogOut, Mail, X, Loader2, ArrowLeft, KeyRound } from "lucide-react"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils" // ✅ เพิ่ม import cn
+import { cn } from "@/lib/utils"
 
 // ✅ เพิ่ม Interface รับค่า isCollapsed
 interface AuthButtonProps {
@@ -16,23 +16,21 @@ interface AuthButtonProps {
 }
 
 export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
-    // Create Supabase Client
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
     const [user, setUser] = useState<any>(null)
-    const [showModal, setShowModal] = useState(false)
     
-    // Modal States for Sign Out Confirmation
-    const [showSignOutModal, setShowSignOutModal] = useState(false)
-
-    // State for Form
+    // Modal States
+    const [showLoginModal, setShowLoginModal] = useState(false)
+    const [showSignOutModal, setShowSignOutModal] = useState(false) // ✅ เพิ่ม State Modal Logout
+    
+    // Login Form States
     const [email, setEmail] = useState("")
     const [otpToken, setOtpToken] = useState("")
     const [step, setStep] = useState<'email' | 'verify'>('email')
-    
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState<string | null>(null)
 
@@ -42,31 +40,24 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             setUser(session?.user || null)
-            if (session?.user) {
-                lastUserId.current = session.user.id
-            }
+            if (session?.user) lastUserId.current = session.user.id
         }
         checkUser()
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             const currentUserId = session?.user?.id || null
-
-            if (_event === 'SIGNED_IN' && currentUserId === lastUserId.current) {
-                return 
-            }
+            // กัน Toast เด้งซ้ำถ้าเป็นคนเดิม
+            if (_event === 'SIGNED_IN' && currentUserId === lastUserId.current) return
 
             lastUserId.current = currentUserId 
             setUser(session?.user || null)
 
             if (_event === 'SIGNED_IN') {
                 toast.success("Login confirmed!")
-                setTimeout(() => {
-                    setShowModal(false)
-                    window.location.reload()
-                }, 1500)
-            } else if (_event === 'SIGNED_OUT') {
-                window.location.reload()
-            }
+                // ✅ ปิด Modal อย่างเดียว (ไม่ Reload หน้าแล้ว ปล่อยให้ Shell จัดการ)
+                setShowLoginModal(false)
+            } 
+            // ส่วน SIGNED_OUT ก็ไม่ต้อง Reload เพราะ Shell มี Listener จัดการเคลียร์ข้อมูลให้อยู่แล้ว
         })
 
         return () => subscription.unsubscribe()
@@ -81,11 +72,8 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-                redirectTo: redirectTo,
-                queryParams: {
-                    access_type: 'offline',
-                    prompt: 'consent',
-                },
+                redirectTo: redirectTo, 
+                queryParams: { access_type: 'offline', prompt: 'consent' },
             },
         })
     }
@@ -95,14 +83,11 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         e.preventDefault()
         setLoading(true)
         setMessage(null)
-
         const redirectTo = `${window.location.origin}/auth/callback`
 
         const { error } = await supabase.auth.signInWithOtp({
             email,
-            options: {
-                emailRedirectTo: redirectTo,
-            },
+            options: { emailRedirectTo: redirectTo },
         })
 
         if (error) {
@@ -122,13 +107,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         e.preventDefault()
         setLoading(true)
         setMessage(null)
-
-        const { error } = await supabase.auth.verifyOtp({
-            email,
-            token: otpToken,
-            type: 'email',
-        })
-
+        const { error } = await supabase.auth.verifyOtp({ email, token: otpToken, type: 'email' })
         if (error) {
             setMessage("Error: " + error.message)
             toast.error(error.message)
@@ -138,6 +117,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         }
     }
 
+    // ✅ ฟังก์ชัน Confirm Logout
     const confirmLogout = async () => {
         await supabase.auth.signOut()
         setShowSignOutModal(false)
@@ -148,7 +128,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
     if (user) {
         return (
             <>
-                <div className={cn("flex items-center gap-3 transition-all w-full", isCollapsed ? "flex-col justify-center px-0" : "px-2")}>
+                <div className={cn("flex items-center gap-2 transition-all w-full", isCollapsed ? "flex-col justify-center px-0" : "px-2")}>
                     <Avatar className="h-8 w-8 border border-zinc-700">
                         <AvatarImage src={user.user_metadata?.avatar_url} />
                         <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
@@ -164,18 +144,20 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                             </button>
                         </div>
                     )}
-                    
+
+                    {/* ปุ่ม Logout: ถ้าหดเหลือไอคอน */}
                     <Button 
                         variant="ghost" 
-                        size={isCollapsed ? "icon" : "icon"} 
+                        size={isCollapsed ? "icon" : "icon"}
                         onClick={() => setShowSignOutModal(true)} 
                         className={cn("text-zinc-400 hover:text-white hover:bg-zinc-800", !isCollapsed && "md:hidden")}
+                        title="Sign Out"
                     >
                         <LogOut className="h-4 w-4" />
                     </Button>
                 </div>
 
-                {/* Sign Out Confirmation Modal */}
+                {/* ✅ Sign Out Modal (เพิ่ม z-[999] ให้ลอยทับทุกอย่าง) */}
                 {showSignOutModal && (
                     <div 
                         className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
@@ -204,9 +186,9 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
 
     return (
         <>
-            {/* ✅ ปุ่ม Sign In ปรับตัวตาม isCollapsed */}
+            {/* ✅ ปุ่ม Sign In (ปรับขนาดตาม isCollapsed) */}
             <Button 
-                onClick={() => setShowModal(true)} 
+                onClick={() => setShowLoginModal(true)} 
                 className={cn(
                     "bg-white text-black hover:bg-zinc-200 transition-all",
                     isCollapsed ? "w-9 h-9 p-0 rounded-full justify-center" : "w-full gap-2"
@@ -217,21 +199,17 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                 {!isCollapsed && <span>Sign In</span>}
             </Button>
 
-            {/* Login Modal */}
-            {showModal && (
+            {/* ✅ Login Modal (เพิ่ม z-[999]) */}
+            {showLoginModal && (
                 <div
-                    // ✅ แก้ z-index เป็น 999 ให้ทับทุกอย่างแน่นอน
                     className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
-                    onClick={() => setShowModal(false)}
+                    onClick={() => setShowLoginModal(false)}
                 >
                     <div
                         className="relative w-full max-w-md animate-in zoom-in-95 duration-200"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <button
-                            onClick={() => setShowModal(false)}
-                            className="absolute right-4 top-4 z-10 text-zinc-400 hover:text-white"
-                        >
+                        <button onClick={() => setShowLoginModal(false)} className="absolute right-4 top-4 z-10 text-zinc-400 hover:text-white">
                             <X className="h-4 w-4" />
                         </button>
 
@@ -245,80 +223,30 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="grid gap-4">
-
                                 {step === 'email' ? (
                                     <>
                                         <Button variant="outline" className="w-full border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-white" onClick={handleGoogleLogin} disabled={loading}>
                                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
-                                                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                                                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                                                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                                                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                                                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                                                </svg>
+                                                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" /></svg>
                                             )}
                                             Continue with Google
                                         </Button>
-
-                                        <div className="relative">
-                                            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-zinc-800" /></div>
-                                            <div className="relative flex justify-center text-xs uppercase"><span className="bg-zinc-950 px-2 text-zinc-500">Or continue with</span></div>
-                                        </div>
-
+                                        <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t border-zinc-800" /></div><div className="relative flex justify-center text-xs uppercase"><span className="bg-zinc-950 px-2 text-zinc-500">Or continue with</span></div></div>
                                         <form onSubmit={handleSendOtp} className="grid gap-2">
-                                            <Input
-                                                id="email"
-                                                placeholder="name@example.com"
-                                                type="email"
-                                                value={email}
-                                                onChange={(e) => setEmail(e.target.value)}
-                                                className="bg-zinc-900 border-zinc-800 text-white"
-                                                required
-                                                disabled={loading}
-                                            />
-                                            <Button disabled={loading} className="w-full bg-white text-black hover:bg-zinc-200">
-                                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                                <Mail className="mr-2 h-4 w-4" /> Email
-                                            </Button>
+                                            <Input id="email" placeholder="name@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-zinc-900 border-zinc-800 text-white" required disabled={loading} />
+                                            <Button disabled={loading} className="w-full bg-white text-black hover:bg-zinc-200">{loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}<Mail className="mr-2 h-4 w-4" /> Email</Button>
                                         </form>
                                     </>
                                 ) : (
                                     <>
                                         <form onSubmit={handleVerifyOtp} className="grid gap-2">
-                                            <Input
-                                                id="otp"
-                                                placeholder="Enter 6-digit code"
-                                                type="text"
-                                                value={otpToken}
-                                                onChange={(e) => setOtpToken(e.target.value)}
-                                                className="bg-zinc-900 border-zinc-800 text-white text-center tracking-widest text-lg"
-                                                required
-                                                disabled={loading}
-                                                maxLength={6}
-                                            />
-                                            <Button disabled={loading} className="w-full bg-white text-black hover:bg-zinc-200">
-                                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                                Verify Code
-                                            </Button>
+                                            <Input id="otp" placeholder="Enter 6-digit code" type="text" value={otpToken} onChange={(e) => setOtpToken(e.target.value)} className="bg-zinc-900 border-zinc-800 text-white text-center tracking-widest text-lg" required disabled={loading} maxLength={6} />
+                                            <Button disabled={loading} className="w-full bg-white text-black hover:bg-zinc-200">{loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Verify Code</Button>
                                         </form>
-
-                                        <Button
-                                            variant="ghost"
-                                            onClick={() => setStep('email')}
-                                            disabled={loading}
-                                            className="w-full text-zinc-400 hover:text-white"
-                                        >
-                                            <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                                        </Button>
+                                        <Button variant="ghost" onClick={() => setStep('email')} disabled={loading} className="w-full text-zinc-400 hover:text-white"><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
                                     </>
                                 )}
-
-                                {message && (
-                                    <p className={`text-sm text-center ${message.startsWith('Error') ? 'text-red-500' : 'text-green-500'}`}>
-                                        {message}
-                                    </p>
-                                )}
-
+                                {message && <p className={`text-sm text-center ${message.startsWith('Error') ? 'text-red-500' : 'text-green-500'}`}>{message}</p>}
                             </CardContent>
                         </Card>
                     </div>
