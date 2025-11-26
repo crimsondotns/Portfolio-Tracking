@@ -112,14 +112,15 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
     }, []);
 
     useEffect(() => {
-        const checkUser = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            setUser(session?.user || null);
-        };
-        checkUser();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUser(session?.user || null);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            setUser(session?.user ?? null);
+            if (event === 'SIGNED_IN') {
+                toast.success("Login confirmed");
+                // Reload the page to ensure all states are fresh
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            }
         });
 
         return () => subscription.unsubscribe();

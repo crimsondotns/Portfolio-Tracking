@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { Suspense } from "react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,6 +19,8 @@ export const metadata: Metadata = {
   description: "Personal crypto portfolio tracker",
 };
 
+import { LoginSuccessToast } from "@/components/LoginSuccessToast";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,6 +33,9 @@ export default function RootLayout({
       >
         {children}
         <Toaster />
+        <Suspense fallback={null}>
+          <LoginSuccessToast />
+        </Suspense>
       </body>
     </html>
   );
