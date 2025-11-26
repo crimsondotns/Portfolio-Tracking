@@ -822,7 +822,7 @@ export function PortfolioDashboardShell({ portfolios }: PortfolioDashboardShellP
     );
 }
 
-function SummaryCard({ title, value, subValue, highlight, isPnL, pnlValue }: { title: string, value: string, subValue?: string, highlight?: boolean, isPnL?: boolean, pnlValue?: number }) {
+function SummaryCard({ title, value, subValue, highlight, isPnL, pnlValue }: { title: string, value: string | ReactNode, subValue?: string | ReactNode, highlight?: boolean, isPnL?: boolean, pnlValue?: number }) {
     return (
         <Card className="bg-zinc-950 border-white/10">
             <CardHeader className="flex flex-col items-center justify-center space-y-0 pb-2">
@@ -856,7 +856,7 @@ function PortfolioPositionsMobileCards({
     formatPercent: (v: number) => string,
     handleCopy: (text: string) => void,
     isPrivacyMode: boolean,
-    formatPrivacy: (v: string) => string,
+    formatPrivacy: (v: string | ReactNode) => ReactNode,
     getPnLColor: (v: number) => string
 }) {
     return (
