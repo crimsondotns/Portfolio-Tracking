@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createBrowserClient } from "@supabase/ssr"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,27 +27,43 @@ export default function AuthButton() {
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState<string | null>(null)
 
+    // 🔥 เพิ่มตัวแปรจำ ID ของ User คนล่าสุด (เพื่อกัน Toast เด้งซ้ำ)
+    const lastUserId = useRef<string | null>(null)
+
     useEffect(() => {
-        // 1. Check current User
+        // 1. Check current User (Init)
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             setUser(session?.user || null)
+            if (session?.user) {
+                lastUserId.current = session.user.id // จำไว้ว่าคนนี้ Login อยู่แล้วนะ
+            }
         }
         checkUser()
 
         // 2. Listen for login/logout events
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            const currentUserId = session?.user?.id || null
+
+            // 🔥 เช็คว่า: ถ้าเป็น User คนเดิม (และไม่ใช่การ Logout) -> ไม่ต้องทำอะไร
+            // (แก้ปัญหา Toast เด้งตอนสลับ Tab)
+            if (_event === 'SIGNED_IN' && currentUserId === lastUserId.current) {
+                return 
+            }
+
+            // อัปเดต User ปัจจุบัน
+            lastUserId.current = currentUserId 
             setUser(session?.user || null)
 
             if (_event === 'SIGNED_IN') {
                 toast.success("Login confirmed!")
                 setTimeout(() => {
                     setShowModal(false)
-                    // ❌ เอา window.location.reload() ออก เพื่อไม่ให้หน้ากระพริบ
-                    // ปล่อยให้หน้า Dashboard จับ event แล้วโหลดข้อมูลเอง
-                }, 1000)
-            } 
-            // ส่วน SIGNED_OUT ก็ไม่ต้อง reload เดี๋ยวหน้า Dashboard เคลียร์ข้อมูลเอง
+                    window.location.reload()
+                }, 1500)
+            } else if (_event === 'SIGNED_OUT') {
+                window.location.reload()
+            }
         })
 
         return () => subscription.unsubscribe()
@@ -77,6 +93,8 @@ export default function AuthButton() {
         setLoading(true)
         setMessage(null)
 
+        // สำหรับ OTP ไม่จำเป็นต้องใช้ emailRedirectTo ถ้าจะให้ User กรอกรหัส
+        // แต่ใส่ไว้เผื่อ User อยากกดลิงก์
         const redirectTo = `${window.location.origin}/auth/callback`
 
         const { error } = await supabase.auth.signInWithOtp({
@@ -90,7 +108,7 @@ export default function AuthButton() {
             setMessage("Error: " + error.message)
             toast.error(error.message)
         } else {
-            const msg = "Check your email for code/link."
+            const msg = "OTP sent! Check your email."
             setMessage(`✅ ${msg}`)
             toast.success(msg)
             setStep('verify')
@@ -116,7 +134,7 @@ export default function AuthButton() {
             setLoading(false)
         } else {
             toast.success("Verified successfully!")
-            // onAuthStateChange จะทำงานเอง
+            // onAuthStateChange จะทำงานต่อเอง
         }
     }
 
