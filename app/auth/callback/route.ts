@@ -30,8 +30,14 @@ export async function GET(request: Request) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
             return NextResponse.redirect(`${origin}${next}?login=success`)
-        }
+    } else {
+      // 👇 เพิ่ม console.log เพื่อดูใน Vercel Log
+      console.error("Login Error:", error.message)
+      
+      // 👇 แก้บรรทัดนี้: ส่งข้อความ Error กลับไปที่หน้าเว็บ
+      return NextResponse.redirect(`${origin}/?error=${encodeURIComponent(error.message)}`)
     }
+  }
 
     // return the user to an error page with instructions
     return NextResponse.redirect(`${origin}/?error=auth_failed`)

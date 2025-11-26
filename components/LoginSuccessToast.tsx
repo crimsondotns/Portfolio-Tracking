@@ -9,14 +9,29 @@ export function LoginSuccessToast() {
     const router = useRouter();
 
     useEffect(() => {
-        if (searchParams.get("login") === "success") {
-            toast.success("Welcome back!");
+        const loginStatus = searchParams.get("login");
+        const errorMessage = searchParams.get("error");
+
+        // กรณี Login สำเร็จ (สีเขียว)
+        if (loginStatus === "success") {
+            toast.success("Welcome back!", {
+                description: "Signed in successfully."
+            });
+            
+            // ล้าง URL param 'login' ออก
             const newSearchParams = new URLSearchParams(searchParams.toString());
             newSearchParams.delete("login");
             const newPath = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : "");
             router.replace(newPath);
-        } else if (searchParams.get("error") === "auth_failed") {
-            toast.error("Login Failed");
+        } 
+        
+        // ✅ กรณีเกิด Error (สีแดง) - อ่านข้อความจริงจาก URL
+        else if (errorMessage) {
+            toast.error("Login Failed", {
+                description: decodeURIComponent(errorMessage) // แสดงข้อความ Error ที่แท้จริง
+            });
+
+            // ล้าง URL param 'error' ออก
             const newSearchParams = new URLSearchParams(searchParams.toString());
             newSearchParams.delete("error");
             const newPath = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : "");
