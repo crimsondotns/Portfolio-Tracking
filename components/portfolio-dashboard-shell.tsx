@@ -10,42 +10,30 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, Globe, Wallet, ChevronLeft, ChevronRight, Copy, ChevronUp, ChevronDown, List, LayoutGrid, ChevronsUpDown, Triangle, MoreVertical, Trash2, BarChart2, Eye, EyeOff, Fuel, Gauge, ArrowUp, LogIn } from "lucide-react";
+import { Search, RefreshCw, Globe, Wallet, ChevronLeft, ChevronRight, Copy, ChevronUp, ChevronDown, List, LayoutGrid, ChevronsUpDown, Triangle, MoreVertical, Trash2, BarChart2, Eye, EyeOff, Fuel, Gauge, ArrowUp } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/ui/sparkline";
-import { supabase } from "@/lib/supabase";
+import { createBrowserClient } from "@supabase/ssr"; // ✅ ใช้ createBrowserClient เพื่อจัดการ Cookies อัตโนมัติ
 import AuthButton from "@/components/ui/AuthButton";
 
 // --- Helper Function for Price Formatting ---
 const formatCryptoPrice = (price: number) => {
     if (price === 0) return "$0.00";
     if (price >= 1) return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price);
-
     if (price >= 0.0001) {
         return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(price);
     }
-
     const priceStr = price.toFixed(20).replace(/0+$/, '');
     const match = priceStr.match(/\.0+/);
-
     if (match) {
         const zeroCount = match[0].length - 1;
         const significantDigits = priceStr.substring(match[0].length + 1).substring(0, 4);
-
-        const subscripts: { [key: number]: string } = {
-            4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉', 10: '₁₀', 11: '₁₁', 12: '₁₂'
-        };
-
+        const subscripts: { [key: number]: string } = { 4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉', 10: '₁₀', 11: '₁₁', 12: '₁₂' };
         if (subscripts[zeroCount]) {
-            return (
-                <span>
-                    $0.0<span className="text-[0.7em] opacity-80">{zeroCount}</span>{significantDigits}
-                </span>
-            );
+            return (<span>$0.0<span className="text-[0.7em] opacity-80">{zeroCount}</span>{significantDigits}</span>);
         }
     }
-
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 8 }).format(price);
 };
 
@@ -56,6 +44,14 @@ interface PortfolioDashboardShellProps {
 export function PortfolioDashboardShell({ portfolios: initialPortfolios }: PortfolioDashboardShellProps) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
+    
+    // ✅ สร้าง Supabase Client สำหรับ Client Component
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    // ✅ ใช้ State เก็บข้อมูลแทน Props (เพื่อให้เราอัปเดตเองได้โดยไม่ต้องรีเฟรชหน้า)
     const [portfolios, setPortfolios] = useState<Portfolio[]>(initialPortfolios);
     
     const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(initialPortfolios[0]?.id || "all");
@@ -73,7 +69,8 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     const [fngIndex, setFngIndex] = useState<{ value: string, value_classification: string } | null>(null);
     const [gasPrice, setGasPrice] = useState<number | null>(null);
 
-    // Client Fetch Data Function
+    // ✅ ฟังก์ชันดึงข้อมูลฝั่ง Client (Client-Side Fetching)
+    // ไม่กิน Quota Vercel Server Function เพราะยิงตรงไป Supabase
     const fetchClientData = useCallback(async () => {
         const { data, error } = await supabase.from('positions').select('*');
         
@@ -84,7 +81,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
         if (!data) return;
 
-        // Map Data
+        // Map ข้อมูล (Logic เดียวกับ Server เพื่อให้ข้อมูลหน้าตาเหมือนเดิม)
         const positions: Position[] = data.map((row: any) => {
             const price = Number(row.price_usd) || 0;
             const buyPrice = Number(row.entry_price) || 0;
@@ -115,7 +112,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
             };
         });
 
-        // Group Data
+        // Group ข้อมูลตาม Portfolio Name
         const portfoliosMap = new Map<string, Position[]>();
         positions.forEach(pos => {
             const name = pos.portfolioName;
@@ -131,27 +128,42 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
         setPortfolios(newPortfolios);
         
+        // ถ้า Portfolio ที่เลือกอยู่หายไป (เช่น ลบหมด) ให้ Reset กลับไปอันแรก
         if (selectedPortfolioId !== "all" && !newPortfolios.find(p => p.id === selectedPortfolioId)) {
-             setSelectedPortfolioId(newPortfolios[0]?.id || "all");
+             // ถ้ามีพอร์ตเหลือ ให้เลือกอันแรก ถ้าไม่มีเลย ให้เป็น all
+             if (newPortfolios.length > 0) setSelectedPortfolioId(newPortfolios[0].id);
+             else setSelectedPortfolioId("all");
         }
         
-    }, [selectedPortfolioId]);
+    }, [supabase, selectedPortfolioId]);
 
+    // ✅ Listener สำหรับ Login/Logout แบบ Real-time
     useEffect(() => {
+        // เช็ค User ปัจจุบันก่อน
+        const checkUser = async () => {
+            const { data: { session } } = await supabase.auth.getSession()
+            setUser(session?.user ?? null);
+        }
+        checkUser();
+
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             setUser(session?.user ?? null);
+            
             if (event === 'SIGNED_IN') {
+                // พอ Login ปุ๊บ ดึงข้อมูลใหม่ทันที (Client Fetch) หน้าไม่ขาว ไม่กระพริบ
                 fetchClientData(); 
             } else if (event === 'SIGNED_OUT') {
+                // พอ Logout ปุ๊บ เคลียร์ข้อมูล (หรือดึงใหม่แบบ Guest ถ้ามี Public Data)
                 setPortfolios([]); 
                 fetchClientData(); 
             }
         });
 
         return () => subscription.unsubscribe();
-    }, [fetchClientData]);
+    }, [supabase, fetchClientData]);
 
     useEffect(() => {
+        // Fetch F&G และ Gas (เหมือนเดิม)
         const fetchFng = async () => {
             try {
                 const res = await fetch('https://api.alternative.me/fng/');
@@ -163,15 +175,12 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 console.error("Failed to fetch F&G Index", e);
             }
         };
-
-        const fetchGas = () => {
-            setGasPrice(Math.floor(Math.random() * 20) + 10);
-        };
-
+        const fetchGas = () => { setGasPrice(Math.floor(Math.random() * 20) + 10); };
         fetchFng();
         fetchGas();
     }, []);
 
+    // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (openMenuId && !(event.target as Element).closest('.action-menu-trigger') && !(event.target as Element).closest('.action-menu-content')) {
@@ -182,6 +191,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         return () => document.removeEventListener('click', handleClickOutside);
     }, [openMenuId]);
 
+    // แก้ไข handleDelete ให้เรียก fetchClientData แทน router.refresh
     const handleDelete = async (id: string) => {
         const { error } = await supabase.from('positions').delete().eq('id', id);
 
@@ -190,10 +200,12 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         } else {
             toast.success("Position deleted successfully");
             setOpenMenuId(null);
-            fetchClientData();
+            // ✅ เรียก Client Fetch แทน router.refresh() ประหยัด Quota
+            fetchClientData(); 
         }
     };
 
+    // Reset visible count when filters change
     useEffect(() => {
         setVisibleCount(50);
     }, [searchQuery, viewMode, sortConfig, selectedPortfolioId]);
@@ -212,7 +224,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 setShowBackToTop(false);
             }
         };
-
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
@@ -227,6 +238,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     };
 
     const handleRefresh = () => {
+        // ✅ ปุ่ม Refresh ก็ดึงผ่าน Client เหมือนกัน
         toast.promise(fetchClientData(), {
             loading: 'Refreshing data...',
             success: 'Data refreshed',
@@ -276,6 +288,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         return sortedPositions.slice(0, visibleCount);
     }, [sortedPositions, visibleCount]);
 
+    // Intersection Observer
     useEffect(() => {
         const observer = new IntersectionObserver(
             (entries) => {
@@ -318,7 +331,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     const getPnLColor = (val: number) => {
         if (val > 0) return "text-emerald-500";
         if (val < 0) return "text-rose-500";
-        return "text-zinc-400";
+        return "text-zinc-400"; // Neutral color
     };
 
     const formatPrivacy = (val: string | ReactNode) => {
@@ -336,6 +349,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         <span>Portfolio</span>
                     </div>
 
+                    {/* Mobile Widgets */}
                     <div className="flex items-center gap-3 ml-auto mr-2">
                         {fngIndex && (
                             <div className="flex items-center gap-1 bg-zinc-900/50 rounded px-2 py-1 border border-white/5">
@@ -353,7 +367,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         )}
                     </div>
 
-                    {/* Mobile Auth Button */}
+                    {/* Auth Button */}
                     <div className="w-fit">
                         <AuthButton />
                     </div>
@@ -424,6 +438,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 {/* Sidebar Widgets */}
                 {!isCollapsed && (
                     <div className="px-4 py-2 space-y-3 mt-auto mb-4">
+                        {/* Fear & Greed */}
                         {fngIndex && (
                             <div className="bg-zinc-900/50 rounded-lg p-3 border border-white/5">
                                 <div className="flex items-center gap-2 mb-1">
@@ -439,6 +454,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                             </div>
                         )}
 
+                        {/* Gas Price */}
                         {gasPrice && (
                             <div className="flex items-center justify-between bg-zinc-900/50 rounded-lg p-2 px-3 border border-white/5">
                                 <div className="flex items-center gap-2">
@@ -454,14 +470,14 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 {/* Desktop Auth Button */}
                 <div className={cn("pt-4 border-t border-white/10", !isCollapsed ? "mt-0" : "mt-auto")}>
                     <div className={cn(isCollapsed ? "flex justify-center" : "")}>
-                        {/* ✅ ส่งค่า isCollapsed ให้ AuthButton */}
-                        <AuthButton isCollapsed={isCollapsed} />
+                        <AuthButton />
                     </div>
                 </div>
             </aside>
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col">
+
                 {/* Content Container */}
                 <div className="p-4 md:p-8 space-y-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -535,7 +551,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </div>
                     </div>
 
-                    {/* Tables & Grids */}
+                    {/* Content Area: Tables & Cards */}
                     {viewMode === 'list' && (
                         <div className="hidden md:block rounded-lg border border-white/10 bg-zinc-950/50 min-h-[500px]">
                             <Table disableOverflow>
@@ -706,6 +722,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                             </TableCell>
                                         </TableRow>
                                     ))}
+                                    {/* Desktop Sentinel */}
                                     {visiblePositions.length < sortedPositions.length && (
                                         <TableRow ref={desktopTarget}>
                                             <TableCell colSpan={9} className="text-center py-4 text-zinc-500">
@@ -776,7 +793,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     );
 }
 
-// --- Helper Components (Same as before, no change needed) ---
+// --- Helper Components ---
 interface SummaryCardProps {
     title: string;
     value: ReactNode;
