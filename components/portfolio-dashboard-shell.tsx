@@ -530,7 +530,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 </div>
 
                 {/* Desktop Auth Button */}
-                <div className={cn("pt-2 border-t border-white/10", !isCollapsed ? "mt-0" : "mt-auto")}>
+                <div className={cn("pt-2.5 border-t border-white/10", !isCollapsed ? "mt-0" : "mt-auto")}>
                     <div className={cn(isCollapsed ? "flex justify-center" : "")}>
                         <AuthButton isCollapsed={isCollapsed} />
                     </div>

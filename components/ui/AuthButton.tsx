@@ -168,7 +168,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                         className={cn("text-zinc-400 hover:text-white hover:bg-zinc-800", !isCollapsed && "md:hidden")}
                         title="Sign Out"
                     >
-                        <LogOut className="h-4 w-4" />
+                        <LogOut className="h-4 w-4 mb-5" />
                     </Button>
                 </div>
 
