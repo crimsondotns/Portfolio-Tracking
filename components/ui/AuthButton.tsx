@@ -3,20 +3,21 @@
 import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { createBrowserClient } from "@supabase/ssr"
+import { useRouter } from "next/navigation" // ✅ 1. เพิ่ม import useRouter
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { LogOut, Mail, X, Loader2, ArrowLeft, KeyRound } from "lucide-react"
+import { LogOut, Mail, X, Loader2, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
-// ✅ เพิ่ม Interface รับค่า isCollapsed
 interface AuthButtonProps {
     isCollapsed?: boolean;
 }
 
 export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
+    const router = useRouter() // ✅ 2. เรียกใช้ Hook
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -26,7 +27,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
 
     // Modal States
     const [showLoginModal, setShowLoginModal] = useState(false)
-    const [showSignOutModal, setShowSignOutModal] = useState(false) // ✅ เพิ่ม State Modal Logout
+    const [showSignOutModal, setShowSignOutModal] = useState(false)
 
     // Login Form States
     const [email, setEmail] = useState("")
@@ -47,7 +48,6 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             const currentUserId = session?.user?.id || null
-            // กัน Toast เด้งซ้ำถ้าเป็นคนเดิม
             if (_event === 'SIGNED_IN' && currentUserId === lastUserId.current) return
 
             lastUserId.current = currentUserId
@@ -55,14 +55,13 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
 
             if (_event === 'SIGNED_IN') {
                 toast.success("Login confirmed!")
-                // ✅ ปิด Modal อย่างเดียว (ไม่ Reload หน้าแล้ว ปล่อยให้ Shell จัดการ)
                 setShowLoginModal(false)
+                router.refresh()
             }
-            // ส่วน SIGNED_OUT ก็ไม่ต้อง Reload เพราะ Shell มี Listener จัดการเคลียร์ข้อมูลให้อยู่แล้ว
         })
 
         return () => subscription.unsubscribe()
-    }, [supabase])
+    }, [supabase, router])
 
     // Google Login
     const handleGoogleLogin = async () => {
@@ -118,20 +117,33 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         }
     }
 
-    // ✅ ฟังก์ชัน Confirm Logout
+    // ✅ 3. ฟังก์ชัน Confirm Logout (ฉบับแก้ไข: บังคับออกทุกกรณี)
     const confirmLogout = async () => {
-        await supabase.auth.signOut()
-        setShowSignOutModal(false)
-    }
+        // 1. พยายามแจ้ง Server ให้ Logout (แต่ไม่สน error)
+        const { error } = await supabase.auth.signOut()
+        
+        if (error) {
+            console.warn("Logout error (session likely expired):", error.message)
+        }
 
-    // --- Render ---
+        // 2. บังคับเคลียร์ค่าหน้าบ้านทันที (Force Clear)
+        setUser(null)
+        setShowSignOutModal(false)
+        
+        // 3. รีเฟรชหน้าจอเพื่อเคลียร์ข้อมูลค้าง
+        router.refresh()
+    }
 
     // --- Render ---
 
     if (user) {
         return (
             <>
-                <div className={cn("flex items-center gap-2 transition-all w-full", isCollapsed ? "flex-col justify-center px-0 gap-3" : "px-2")}>
+                <div className={cn(
+                    "flex items-center transition-all w-full",
+                    // ✅ ปรับ gap-4 ตรงนี้เพื่อให้ไอคอนห่างจาก Avatar มากขึ้นตอนพับจอ
+                    isCollapsed ? "flex-col justify-center px-0 gap-3" : "px-2 gap-2"
+                )}>
                     <Avatar className="h-8 w-8 border border-zinc-700">
                         <AvatarImage src={user.user_metadata?.avatar_url} />
                         <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
@@ -148,19 +160,19 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                         </div>
                     )}
 
-                    {/* ปุ่ม Logout: ถ้าหดเหลือไอคอน */}
+                    {/* ปุ่ม Logout: แสดงเฉพาะตอน Mobile หรือตอนพับจอ */}
                     <Button
                         variant="ghost"
-                        size={isCollapsed ? "icon" : "icon"}
+                        size="icon"
                         onClick={() => setShowSignOutModal(true)}
                         className={cn("text-zinc-400 hover:text-white hover:bg-zinc-800", !isCollapsed && "md:hidden")}
                         title="Sign Out"
                     >
-                        <LogOut className="h-4 w-4 mb-5" />
+                        <LogOut className="h-4 w-4" />
                     </Button>
                 </div>
 
-                {/* ✅ Sign Out Modal (Portal) */}
+                {/* Sign Out Modal (Portal) */}
                 {showSignOutModal && typeof document !== 'undefined' && createPortal(
                     <div
                         className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
@@ -190,7 +202,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
 
     return (
         <>
-            {/* ✅ ปุ่ม Sign In (ปรับขนาดตาม isCollapsed) */}
+            {/* ปุ่ม Sign In */}
             <Button
                 onClick={() => setShowLoginModal(true)}
                 className={cn(
@@ -203,7 +215,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                 {!isCollapsed && <span>Sign In</span>}
             </Button>
 
-            {/* ✅ Login Modal (Portal) */}
+            {/* Login Modal (Portal) */}
             {showLoginModal && typeof document !== 'undefined' && createPortal(
                 <div
                     className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
