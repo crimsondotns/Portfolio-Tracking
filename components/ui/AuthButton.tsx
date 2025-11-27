@@ -130,8 +130,8 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         setUser(null)
         setShowSignOutModal(false)
         
-        // 3. รีเฟรชหน้าจอเพื่อเคลียร์ข้อมูลค้าง
-        router.refresh()
+        // 3. รีเฟรชหน้าจอเพื่อเคลียร์ข้อมูลค้าง เปลี่ยนจาก router.refresh() 
+        window.location.reload()
     }
 
     // --- Render ---
