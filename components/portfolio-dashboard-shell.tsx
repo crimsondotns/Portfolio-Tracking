@@ -538,7 +538,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col">
+            <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
                 {/* Content Container */}
                 <div className="p-4 md:p-8 space-y-6">
@@ -558,7 +558,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <SummaryCard title="TOTAL INVESTED" value={formatPrivacy(formatCurrency(totalInvested))} />
                         <SummaryCard title="CURRENT VALUE" value={formatPrivacy(formatCurrency(totalValue))} highlight />
                         <SummaryCard
@@ -872,7 +872,7 @@ function SummaryCard({ title, value, subValue, highlight, isPnL, pnlValue }: Sum
                 <CardTitle className="text-sm font-medium text-zinc-400">{title}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col items-center">
-                <div className={cn("text-2xl font-bold font-mono", highlight ? "text-white" : "text-zinc-200", isPnL && (pnlValue !== undefined ? (pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "text-zinc-400") : "text-zinc-200"))}>
+                <div className={cn("text-xl md:text-2xl font-bold font-mono", highlight ? "text-white" : "text-zinc-200", isPnL && (pnlValue !== undefined ? (pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "text-zinc-400") : "text-zinc-200"))}>
                     {value}
                 </div>
                 {subValue && (

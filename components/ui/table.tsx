@@ -12,7 +12,7 @@ function Table({
   // ถ้าสั่ง disableOverflow = true ให้เรนเดอร์ div ธรรมดา (เพื่อให้ Sticky ทำงานกับหน้าเว็บหลัก)
   if (disableOverflow) {
     return (
-      <div className="relative w-full">
+      <div className="relative w-full overflow-auto max-h-[calc(100vh-200px)] custom-scrollbar">
         <table
           data-slot="table"
           className={cn("w-full caption-bottom text-sm", className)}
