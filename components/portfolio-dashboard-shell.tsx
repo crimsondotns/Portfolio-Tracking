@@ -464,7 +464,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 </div>
 
                 {/* Sidebar Widgets */}
-                <div className={cn("mt-auto space-y-3", "mb-2", isCollapsed ? "mt-50" : "mb-4", isCollapsed ? "px-2" : "px-4 py-3")}>
+                <div className={cn("mt-auto space-y-3 w-full flex flex-col items-center", "mb-2", isCollapsed ? "items-center mt-4" : "items-stretch mb-4", isCollapsed ? "px-2" : "px-4 py-3")}>
                     <TooltipProvider>
 
                         {/* Fear & Greed */}
@@ -472,7 +472,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                             isCollapsed ? (
                                 <Tooltip delayDuration={0}>
                                     <TooltipTrigger asChild>
-                                        <div className="flex justify-center cursor-help">
+                                        <div className="flex justify-center w-full cursor-help">
                                             <div className={cn("p-2 rounded-lg bg-zinc-900/50 border border-white/5 transition-colors hover:bg-zinc-800", Number(fngIndex.value) > 50 ? "text-emerald-500" : "text-rose-500")}>
                                                 <Gauge className="h-5 w-5" />
                                             </div>
@@ -506,7 +506,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                             isCollapsed ? (
                                 <Tooltip delayDuration={0}>
                                     <TooltipTrigger asChild>
-                                        <div className="flex justify-center cursor-help">
+                                        <div className="flex justify-center w-full cursor-help">
                                             <div className="p-2 rounded-lg bg-zinc-900/50 border border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
                                                 <Fuel className="h-5 w-5" />
                                             </div>
