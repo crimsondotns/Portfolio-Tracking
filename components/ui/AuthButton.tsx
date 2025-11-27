@@ -121,7 +121,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
     const confirmLogout = async () => {
         // 1. พยายามแจ้ง Server ให้ Logout (แต่ไม่สน error)
         const { error } = await supabase.auth.signOut()
-        
+
         if (error) {
             console.warn("Logout error (session likely expired):", error.message)
         }
@@ -129,7 +129,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         // 2. บังคับเคลียร์ค่าหน้าบ้านทันที (Force Clear)
         setUser(null)
         setShowSignOutModal(false)
-        
+
         // 3. รีเฟรชหน้าจอเพื่อเคลียร์ข้อมูลค้าง เปลี่ยนจาก router.refresh() 
         window.location.reload()
     }

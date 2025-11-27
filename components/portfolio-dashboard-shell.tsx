@@ -427,17 +427,17 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                                     )}
                                                 >
                                                     {p.name.substring(0, 2).toUpperCase()}
-                                                    
+
                                                     {/* Active Indicator (จุดเขียว) */}
                                                     {isActive && (
                                                         <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border-2 border-[#09090b]"></span>
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border-2 border-[#09090b]"></span>
                                                         </span>
                                                     )}
                                                 </button>
                                             </TooltipTrigger>
-                                            
+
                                             {/* Tooltip บอกชื่อเต็ม */}
                                             <TooltipContent side="right" sideOffset={10} className="z-[9999] font-medium bg-zinc-950 border-zinc-800 text-zinc-200">
                                                 {p.name}
