@@ -538,7 +538,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col">
+            <main className="flex-1 flex w-full flex-col">
 
                 {/* Content Container */}
                 <div className="p-4 md:p-8 space-y-6">
