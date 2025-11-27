@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { createPortal } from "react-dom"
 import { createBrowserClient } from "@supabase/ssr"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,11 +23,11 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
     )
 
     const [user, setUser] = useState<any>(null)
-    
+
     // Modal States
     const [showLoginModal, setShowLoginModal] = useState(false)
     const [showSignOutModal, setShowSignOutModal] = useState(false) // ✅ เพิ่ม State Modal Logout
-    
+
     // Login Form States
     const [email, setEmail] = useState("")
     const [otpToken, setOtpToken] = useState("")
@@ -49,14 +50,14 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
             // กัน Toast เด้งซ้ำถ้าเป็นคนเดิม
             if (_event === 'SIGNED_IN' && currentUserId === lastUserId.current) return
 
-            lastUserId.current = currentUserId 
+            lastUserId.current = currentUserId
             setUser(session?.user || null)
 
             if (_event === 'SIGNED_IN') {
                 toast.success("Login confirmed!")
                 // ✅ ปิด Modal อย่างเดียว (ไม่ Reload หน้าแล้ว ปล่อยให้ Shell จัดการ)
                 setShowLoginModal(false)
-            } 
+            }
             // ส่วน SIGNED_OUT ก็ไม่ต้อง Reload เพราะ Shell มี Listener จัดการเคลียร์ข้อมูลให้อยู่แล้ว
         })
 
@@ -72,7 +73,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-                redirectTo: redirectTo, 
+                redirectTo: redirectTo,
                 queryParams: { access_type: 'offline', prompt: 'consent' },
             },
         })
@@ -124,16 +125,18 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
     }
 
     // --- Render ---
-    
+
+    // --- Render ---
+
     if (user) {
         return (
             <>
-                <div className={cn("flex items-center gap-2 transition-all w-full", isCollapsed ? "flex-col justify-center px-0" : "px-2")}>
+                <div className={cn("flex items-center gap-2 transition-all w-full", isCollapsed ? "flex-col justify-center px-0 gap-3" : "px-2")}>
                     <Avatar className="h-8 w-8 border border-zinc-700">
                         <AvatarImage src={user.user_metadata?.avatar_url} />
                         <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    
+
                     {!isCollapsed && (
                         <div className="flex-1 overflow-hidden hidden md:block">
                             <p className="text-sm font-medium text-white truncate">
@@ -146,25 +149,25 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                     )}
 
                     {/* ปุ่ม Logout: ถ้าหดเหลือไอคอน */}
-                    <Button 
-                        variant="ghost" 
+                    <Button
+                        variant="ghost"
                         size={isCollapsed ? "icon" : "icon"}
-                        onClick={() => setShowSignOutModal(true)} 
+                        onClick={() => setShowSignOutModal(true)}
                         className={cn("text-zinc-400 hover:text-white hover:bg-zinc-800", !isCollapsed && "md:hidden")}
                         title="Sign Out"
                     >
-                        <LogOut className="h-4 w-4" />
+                        <LogOut className="h-4 w-4 mb-5" />
                     </Button>
                 </div>
 
-                {/* ✅ Sign Out Modal (เพิ่ม z-[999] ให้ลอยทับทุกอย่าง) */}
-                {showSignOutModal && (
-                    <div 
-                        className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
+                {/* ✅ Sign Out Modal (Portal) */}
+                {showSignOutModal && typeof document !== 'undefined' && createPortal(
+                    <div
+                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
                         onClick={() => setShowSignOutModal(false)}
                     >
-                        <div 
-                            className="relative w-full max-w-sm p-6 rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl animate-in zoom-in-95" 
+                        <div
+                            className="relative w-full max-w-sm p-6 rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl animate-in zoom-in-95"
                             onClick={e => e.stopPropagation()}
                         >
                             <h3 className="text-lg font-semibold text-white mb-2">Sign Out</h3>
@@ -178,7 +181,8 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                                 </Button>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )}
             </>
         )
@@ -187,8 +191,8 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
     return (
         <>
             {/* ✅ ปุ่ม Sign In (ปรับขนาดตาม isCollapsed) */}
-            <Button 
-                onClick={() => setShowLoginModal(true)} 
+            <Button
+                onClick={() => setShowLoginModal(true)}
                 className={cn(
                     "bg-white text-black hover:bg-zinc-200 transition-all",
                     isCollapsed ? "w-9 h-9 p-0 rounded-full justify-center" : "w-full gap-2"
@@ -199,10 +203,10 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                 {!isCollapsed && <span>Sign In</span>}
             </Button>
 
-            {/* ✅ Login Modal (เพิ่ม z-[999]) */}
-            {showLoginModal && (
+            {/* ✅ Login Modal (Portal) */}
+            {showLoginModal && typeof document !== 'undefined' && createPortal(
                 <div
-                    className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
+                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
                     onClick={() => setShowLoginModal(false)}
                 >
                     <div
@@ -250,7 +254,8 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                             </CardContent>
                         </Card>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </>
     )

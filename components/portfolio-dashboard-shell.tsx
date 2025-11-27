@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/ui/sparkline";
 import { createBrowserClient } from "@supabase/ssr"; // ✅ ใช้ createBrowserClient เพื่อจัดการ Cookies อัตโนมัติ
 import AuthButton from "@/components/ui/AuthButton";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 
 // --- Helper Function for Price Formatting ---
 const formatCryptoPrice = (price: number) => {
@@ -44,7 +45,7 @@ interface PortfolioDashboardShellProps {
 export function PortfolioDashboardShell({ portfolios: initialPortfolios }: PortfolioDashboardShellProps) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
-    
+
     // ✅ สร้าง Supabase Client สำหรับ Client Component
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,7 +54,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
     // ✅ ใช้ State เก็บข้อมูลแทน Props (เพื่อให้เราอัปเดตเองได้โดยไม่ต้องรีเฟรชหน้า)
     const [portfolios, setPortfolios] = useState<Portfolio[]>(initialPortfolios);
-    
+
     const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(initialPortfolios[0]?.id || "all");
     const [searchQuery, setSearchQuery] = useState("");
     const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
@@ -73,7 +74,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     // ไม่กิน Quota Vercel Server Function เพราะยิงตรงไป Supabase
     const fetchClientData = useCallback(async () => {
         const { data, error } = await supabase.from('positions').select('*');
-        
+
         if (error) {
             console.error("Error fetching data:", error);
             return;
@@ -127,14 +128,14 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         })).sort((a, b) => a.name.localeCompare(b.name));
 
         setPortfolios(newPortfolios);
-        
+
         // ถ้า Portfolio ที่เลือกอยู่หายไป (เช่น ลบหมด) ให้ Reset กลับไปอันแรก
         if (selectedPortfolioId !== "all" && !newPortfolios.find(p => p.id === selectedPortfolioId)) {
-             // ถ้ามีพอร์ตเหลือ ให้เลือกอันแรก ถ้าไม่มีเลย ให้เป็น all
-             if (newPortfolios.length > 0) setSelectedPortfolioId(newPortfolios[0].id);
-             else setSelectedPortfolioId("all");
+            // ถ้ามีพอร์ตเหลือ ให้เลือกอันแรก ถ้าไม่มีเลย ให้เป็น all
+            if (newPortfolios.length > 0) setSelectedPortfolioId(newPortfolios[0].id);
+            else setSelectedPortfolioId("all");
         }
-        
+
     }, [supabase, selectedPortfolioId]);
 
     // ✅ Listener สำหรับ Login/Logout แบบ Real-time
@@ -148,14 +149,14 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             setUser(session?.user ?? null);
-            
+
             if (event === 'SIGNED_IN') {
                 // พอ Login ปุ๊บ ดึงข้อมูลใหม่ทันที (Client Fetch) หน้าไม่ขาว ไม่กระพริบ
-                fetchClientData(); 
+                fetchClientData();
             } else if (event === 'SIGNED_OUT') {
                 // พอ Logout ปุ๊บ เคลียร์ข้อมูล (หรือดึงใหม่แบบ Guest ถ้ามี Public Data)
-                setPortfolios([]); 
-                fetchClientData(); 
+                setPortfolios([]);
+                fetchClientData();
             }
         });
 
@@ -201,7 +202,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
             toast.success("Position deleted successfully");
             setOpenMenuId(null);
             // ✅ เรียก Client Fetch แทน router.refresh() ประหยัด Quota
-            fetchClientData(); 
+            fetchClientData();
         }
     };
 
@@ -406,18 +407,45 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 </div>
 
                 <div className="w-full space-y-4">
+                    {/* ✅ ปรับปรุงดีไซน์ปุ่มเลือกพอร์ตเป็น Squircle */}
                     {isCollapsed ? (
-                        <div className="flex flex-col gap-2 items-center">
-                            {portfolios.map(p => (
-                                <div key={p.id}
-                                    className={cn("w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold cursor-pointer transition-colors",
-                                        selectedPortfolioId === p.id ? "bg-white text-black" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
-                                    onClick={() => setSelectedPortfolioId(p.id)}
-                                    title={p.name}
-                                >
-                                    {p.name.substring(0, 2).toUpperCase()}
-                                </div>
-                            ))}
+                        <div className="flex flex-col gap-3 items-center pt-2">
+                            <TooltipProvider>
+                                {portfolios.map(p => {
+                                    const isActive = selectedPortfolioId === p.id;
+                                    return (
+                                        <Tooltip key={p.id} delayDuration={0}>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    onClick={() => setSelectedPortfolioId(p.id)}
+                                                    className={cn(
+                                                        "relative w-10 h-10 flex items-center justify-center text-xs font-bold transition-all duration-200 border",
+                                                        "rounded-xl", // ✅ ดีไซน์สี่เหลี่ยมมน (Squircle)
+                                                        isActive
+                                                            ? "bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.15)] scale-105 z-10" // Active: ขาว + เรืองแสง
+                                                            : "bg-zinc-900/40 text-zinc-500 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-700" // Inactive: โปร่ง
+                                                    )}
+                                                >
+                                                    {p.name.substring(0, 2).toUpperCase()}
+                                                    
+                                                    {/* Active Indicator (จุดเขียว) */}
+                                                    {isActive && (
+                                                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border-2 border-[#09090b]"></span>
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            </TooltipTrigger>
+                                            
+                                            {/* Tooltip บอกชื่อเต็ม */}
+                                            <TooltipContent side="right" sideOffset={10} className="z-[9999] font-medium bg-zinc-950 border-zinc-800 text-zinc-200">
+                                                {p.name}
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    );
+                                })}
+                            </TooltipProvider>
                         </div>
                     ) : (
                         <Select value={selectedPortfolioId} onValueChange={setSelectedPortfolioId}>
@@ -436,41 +464,75 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 </div>
 
                 {/* Sidebar Widgets */}
-                {!isCollapsed && (
-                    <div className="px-4 py-2 space-y-3 mt-auto mb-4">
+                <div className={cn("mt-auto space-y-3", "mb-2", isCollapsed ? "mt-50" : "mb-4", isCollapsed ? "px-2" : "px-4 py-3")}>
+                    <TooltipProvider>
+
                         {/* Fear & Greed */}
                         {fngIndex && (
-                            <div className="bg-zinc-900/50 rounded-lg p-3 border border-white/5">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <Gauge className="h-4 w-4 text-zinc-400" />
-                                    <span className="text-xs font-medium text-zinc-400">Fear & Greed</span>
+                            isCollapsed ? (
+                                <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                        <div className="flex justify-center cursor-help">
+                                            <div className={cn("p-2 rounded-lg bg-zinc-900/50 border border-white/5 transition-colors hover:bg-zinc-800", Number(fngIndex.value) > 50 ? "text-emerald-500" : "text-rose-500")}>
+                                                <Gauge className="h-5 w-5" />
+                                            </div>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" sideOffset={10} className="bg-zinc-950 border-zinc-800 text-zinc-300 z-[9999]">
+                                        <span className={Number(fngIndex.value) > 50 ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
+                                            {fngIndex.value}
+                                        </span>{" "}
+                                        <span className="text-zinc-500">({fngIndex.value_classification})</span>
+                                    </TooltipContent>
+                                </Tooltip>
+                            ) : (
+                                <div className="bg-zinc-900/50 rounded-lg p-3 border border-white/5">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Gauge className="h-4 w-4 text-zinc-400" />
+                                        <span className="text-xs font-medium text-zinc-400">Fear & Greed</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className={cn("text-lg font-bold", Number(fngIndex.value) > 50 ? "text-emerald-500" : "text-rose-500")}>
+                                            {fngIndex.value}
+                                        </span>
+                                        <span className="text-xs text-zinc-500">{fngIndex.value_classification}</span>
+                                    </div>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                    <span className={cn("text-lg font-bold", Number(fngIndex.value) > 50 ? "text-emerald-500" : "text-rose-500")}>
-                                        {fngIndex.value}
-                                    </span>
-                                    <span className="text-xs text-zinc-500">{fngIndex.value_classification}</span>
-                                </div>
-                            </div>
+                            )
                         )}
 
                         {/* Gas Price */}
                         {gasPrice && (
-                            <div className="flex items-center justify-between bg-zinc-900/50 rounded-lg p-2 px-3 border border-white/5">
-                                <div className="flex items-center gap-2">
-                                    <Fuel className="h-3 w-3 text-zinc-400" />
-                                    <span className="text-xs text-zinc-400">Gas</span>
+                            isCollapsed ? (
+                                <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                        <div className="flex justify-center cursor-help">
+                                            <div className="p-2 rounded-lg bg-zinc-900/50 border border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
+                                                <Fuel className="h-5 w-5" />
+                                            </div>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" sideOffset={10} className="bg-zinc-950 border-zinc-800 text-zinc-300 z-[9999]">
+                                        Gas: <span className="font-mono text-white">{gasPrice}</span> Gwei
+                                    </TooltipContent>
+                                </Tooltip>
+                            ) : (
+                                <div className="flex items-center justify-between bg-zinc-900/50 rounded-lg p-2 px-3 border border-white/5">
+                                    <div className="flex items-center gap-2">
+                                        <Fuel className="h-3 w-3 text-zinc-400" />
+                                        <span className="text-xs text-zinc-400">Gas</span>
+                                    </div>
+                                    <span className="text-xs font-mono text-zinc-300">{gasPrice} Gwei</span>
                                 </div>
-                                <span className="text-xs font-mono text-zinc-300">{gasPrice} Gwei</span>
-                            </div>
+                            )
                         )}
-                    </div>
-                )}
+                    </TooltipProvider>
+                </div>
 
                 {/* Desktop Auth Button */}
-                <div className={cn("pt-4 border-t border-white/10", !isCollapsed ? "mt-0" : "mt-auto")}>
+                <div className={cn("pt-2 border-t border-white/10", !isCollapsed ? "mt-0" : "mt-auto")}>
                     <div className={cn(isCollapsed ? "flex justify-center" : "")}>
-                        <AuthButton/>
+                        <AuthButton isCollapsed={isCollapsed} />
                     </div>
                 </div>
             </aside>
@@ -483,7 +545,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                             <div className="flex items-center gap-3">
-                                <h1 className="text-2xl font-bold text-white">My Portfolio</h1>
+                                <h1 className="text-2xl font-bold text-white">Maharaja888 Portfolio</h1>
                                 <button
                                     onClick={() => setIsPrivacyMode(!isPrivacyMode)}
                                     className="text-zinc-500 hover:text-white transition-colors"
@@ -814,9 +876,15 @@ function SummaryCard({ title, value, subValue, highlight, isPnL, pnlValue }: Sum
                     {value}
                 </div>
                 {subValue && (
-                    <p className={cn("text-xs font-mono mt-1", isPnL && (pnlValue !== undefined ? (pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "text-zinc-400") : "text-zinc-200"))}>
+                    <div className={cn("flex items-center gap-1 text-xs font-mono mt-1", isPnL && (pnlValue !== undefined ? (pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "text-zinc-400") : "text-zinc-200"))}>
+                        {isPnL && pnlValue !== undefined && (
+                            <>
+                                {pnlValue > 0 && <Triangle className="h-2 w-2 fill-current" />}
+                                {pnlValue < 0 && <Triangle className="h-2 w-2 fill-current rotate-180" />}
+                            </>
+                        )}
                         {subValue}
-                    </p>
+                    </div>
                 )}
             </CardContent>
         </Card>
