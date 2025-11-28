@@ -10,12 +10,15 @@ import { LogOut } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { LoginModal } from "@/components/login-modal" 
+// Note: Check if your file is in 'components' or 'components/ui'. Adjust this import path if needed.
+import { EditProfileModal } from "@/components/ui/edit-profile-modal" 
 
 interface AuthButtonProps {
     isCollapsed?: boolean;
+    onUserUpdated?: (user: any) => void;
 }
 
-export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
+export default function AuthButton({ isCollapsed = false, onUserUpdated }: AuthButtonProps) {
     const router = useRouter()
     
     const supabase = createBrowserClient(
@@ -26,6 +29,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
     const [user, setUser] = useState<any>(null)
     const [showLoginModal, setShowLoginModal] = useState(false)
     const [showSignOutModal, setShowSignOutModal] = useState(false)
+    const [showEditProfileModal, setShowEditProfileModal] = useState(false)
     
     const lastUserId = useRef<string | null>(null)
 
@@ -53,6 +57,12 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
 
         return () => subscription.unsubscribe()
     }, [supabase, router])
+
+    // ✅ This function MUST be inside the component to access 'setUser'
+    const handleUserUpdated = (updatedUser: any) => {
+        setUser(updatedUser)
+        router.refresh()
+    }
 
     // --- Actions ---
 
@@ -92,7 +102,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
             return { error }
         }
 
-        toast.success("Welcome!", {
+        toast.success("Welcome back!", {
             description: "Signed in successfully."
         })
 
@@ -154,19 +164,30 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                     "flex items-center transition-all w-full",
                     isCollapsed ? "flex-col justify-center px-0 gap-3" : "px-2 gap-2"
                 )}>
-                    <Avatar className="h-8 w-8 border border-zinc-700">
-                        <AvatarImage src={user.user_metadata?.avatar_url} />
-                        <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
-                    </Avatar>
+                    <button 
+                        onClick={() => setShowEditProfileModal(true)}
+                        className="rounded-full focus:outline-none focus:ring-2 focus:ring-white/20 hover:opacity-80 transition-opacity"
+                        title="Edit Profile"
+                    >
+                        <Avatar className="h-8 w-8 border border-zinc-700">
+                            {/* Use key to force re-render if URL changes */}
+                            <AvatarImage src={user.user_metadata?.avatar_url} key={user.user_metadata?.avatar_url} />
+                            <AvatarFallback>{user.email?.slice(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                    </button>
 
                     {!isCollapsed && (
                         <div className="flex-1 overflow-hidden hidden md:block">
-                            <p className="text-sm font-medium text-white truncate">
+                            <button 
+                                onClick={() => setShowEditProfileModal(true)}
+                                className="text-sm font-medium text-white truncate hover:underline text-left block w-full outline-none"
+                                title="Edit Profile"
+                            >
                                 {user.user_metadata?.full_name || user.email}
-                            </p>
+                            </button>
                             <button 
                                 onClick={() => setShowSignOutModal(true)} 
-                                className="text-xs text-zinc-500 hover:text-white transition-colors text-left"
+                                className="text-xs text-zinc-500 hover:text-white transition-colors text-left outline-none"
                             >
                                 Sign Out
                             </button>
@@ -183,6 +204,14 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
                         <LogOut className="h-4 w-4" />
                     </Button>
                 </div>
+
+                {/* ✅ Added onUserUpdated prop here */}
+                <EditProfileModal 
+                    isOpen={showEditProfileModal}
+                    onClose={() => setShowEditProfileModal(false)}
+                    user={user}
+                    onUserUpdated={handleUserUpdated}
+                />
 
                 {showSignOutModal && typeof document !== 'undefined' && createPortal(
                     <div
