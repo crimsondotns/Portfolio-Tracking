@@ -46,9 +46,9 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
 
-    // ✅ 1. ประกาศ Ref สำหรับกล่อง Scroll ทั้ง 2 แบบ
-    const scrollContainerRef = useRef<HTMLDivElement>(null); // สำหรับ Desktop Table/Card Grid
-    const mainContainerRef = useRef<HTMLDivElement>(null);   // สำหรับ Mobile / Parent Container
+    // Refs for scrolling containers
+    const scrollContainerRef = useRef<HTMLDivElement>(null); // For Desktop Table/Grid
+    const mainContainerRef = useRef<HTMLDivElement>(null);   // For Mobile Container
 
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -177,30 +177,25 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         return () => document.removeEventListener('click', handleClickOutside);
     }, [openMenuId]);
 
-    // ✅ 2. แก้ไขระบบ Scroll Listener ให้รองรับทั้ง Desktop (Inner) และ Mobile (Parent)
+    // ✅ 1. สร้างฟังก์ชันจับ Scroll ที่เสถียร (รองรับทั้ง Event ธรรมดาและ React Event)
+    const handleScroll = (e: React.UIEvent<HTMLElement> | Event) => {
+        const target = (e.currentTarget || e.target) as HTMLElement;
+        // ลด Threshold เหลือ 100px เพื่อให้ปุ่มขึ้นไวขึ้น
+        if (target.scrollTop > 100) {
+            setShowBackToTop(true);
+        } else {
+            setShowBackToTop(false);
+        }
+    };
+
+    // ✅ 2. ใช้ useEffect เฉพาะส่วน Desktop Table ที่ต้องพึ่ง Ref
     useEffect(() => {
-        const mainContainer = mainContainerRef.current;
         const scrollContainer = scrollContainerRef.current;
-
-        const handleScroll = (event: Event) => {
-            const target = event.target as HTMLDivElement;
-            // ถ้าเลื่อนเกิน 300px ให้โชว์ปุ่ม
-            if (target.scrollTop > 300) {
-                setShowBackToTop(true);
-            } else {
-                setShowBackToTop(false);
-            }
-        };
-
-        // ผูก Event กับทั้ง 2 Container (ใครเลื่อนก็ให้ทำงาน)
-        if (mainContainer) mainContainer.addEventListener('scroll', handleScroll);
-        if (scrollContainer) scrollContainer.addEventListener('scroll', handleScroll);
-
-        return () => {
-            if (mainContainer) mainContainer.removeEventListener('scroll', handleScroll);
-            if (scrollContainer) scrollContainer.removeEventListener('scroll', handleScroll);
-        };
-    }, [viewMode]); // ทำงานใหม่เมื่อสลับ viewMode
+        if (scrollContainer) {
+            scrollContainer.addEventListener('scroll', handleScroll);
+            return () => scrollContainer.removeEventListener('scroll', handleScroll);
+        }
+    }, [viewMode]); // Re-attach เมื่อเปลี่ยน View
 
     const handleDelete = async (id: string) => {
         const { error } = await supabase.from('positions').delete().eq('id', id);
@@ -223,7 +218,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         }
     }, [viewMode]);
 
-    // ✅ 3. แก้ไขฟังก์ชัน ScrollToTop ให้สั่งเลื่อนทั้ง 2 กล่อง
+    // ✅ 3. สั่งเลื่อนขึ้นทั้ง 2 กล่องเพื่อความชัวร์
     const scrollToTop = () => {
         scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
         mainContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -372,6 +367,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
             {/* Desktop Sidebar (Sticky) */}
             <aside className={cn("hidden md:flex flex-col border-r border-white/10 bg-[#09090b] transition-all duration-300 sticky top-0 h-screen", isCollapsed ? "w-16 items-center py-6" : "w-64 p-6")}>
+                {/* ... Sidebar content (same as before) ... */}
                 <div className="flex items-center justify-between mb-6 w-full">
                     {!isCollapsed && <h2 className="text-lg font-semibold tracking-tight text-white">Portfolio</h2>}
                     <Button variant="ghost" size="icon" onClick={() => setIsCollapsed(!isCollapsed)} className="text-zinc-400 hover:text-white ml-auto">
@@ -422,7 +418,8 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 </div>
                 <div className={cn("mt-auto space-y-3 w-full flex flex-col items-center", "mb-2", isCollapsed ? "items-center mt-4" : "items-stretch mb-4", isCollapsed ? "px-2" : "px-4 py-3")}>
                     <TooltipProvider>
-                        {fngIndex && (
+                        {/* F&G and Gas code same as before */}
+                         {fngIndex && (
                             isCollapsed ? (
                                 <Tooltip delayDuration={0}>
                                     <TooltipTrigger asChild>
@@ -483,13 +480,17 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 </div>
             </aside>
 
-            {/* Main Content - ✅ 4. ปรับปรุง Layout หลัก แก้ Free Space & Scrollbar */}
+            {/* Main Content */}
             <main className="flex-1 flex flex-col min-w-0 h-[100dvh] overflow-hidden">
 
-                {/* Content Container - ✅ เพิ่ม Ref (mainContainerRef) เพื่อจับ Scroll บนมือถือ */}
-                <div ref={mainContainerRef} className="flex flex-col h-full p-4 md:p-8 gap-6 overflow-y-auto md:overflow-hidden">
+                {/* Content Container - ✅ 4. ใช้ onScroll โดยตรงที่นี่ เพื่อจับ Mobile Scroll ชัวร์ๆ */}
+                <div 
+                    ref={mainContainerRef} 
+                    onScroll={handleScroll} 
+                    className="flex flex-col h-full p-4 md:p-8 gap-6 overflow-y-auto md:overflow-hidden"
+                >
                     
-                    {/* Header (Flex-none เพื่อไม่ให้ยืดหด) */}
+                    {/* Header */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 flex-none">
                         <div>
                             <div className="flex items-center gap-3">
@@ -506,7 +507,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </div>
                     </div>
 
-                    {/* Summary Cards (Grid แบบ Responsive + Flex-none) */}
+                    {/* Summary Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 flex-none">
                         <SummaryCard title="TOTAL INVESTED" value={formatPrivacy(formatCurrency(totalInvested))} />
                         <SummaryCard title="CURRENT VALUE" value={formatPrivacy(formatCurrency(totalValue))} highlight />
@@ -519,7 +520,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         />
                     </div>
 
-                    {/* Toolbar (Flex-none) */}
+                    {/* Toolbar */}
                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center flex-none">
                         <div className="flex items-center gap-2 w-full md:w-auto">
                             <div className="relative flex-1 md:w-72">
@@ -562,10 +563,9 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </div>
                     </div>
 
-                    {/* Content Area: Tables (Flex-1 ยืดเต็มพื้นที่) */}
+                    {/* Content Area: Tables */}
                     {viewMode === 'list' && (
                         <div className="hidden md:block rounded-lg border border-white/10 bg-zinc-950/50 flex-1 min-h-0">
-                            {/* ✅ 5. ส่ง Ref เข้าไปใน Table */}
                             <Table disableOverflow containerRef={scrollContainerRef}>
                                 <TableHeader className="sticky top-0 z-40 bg-[#09090b] shadow-sm">
                                     <TableRow className="border-white/5 hover:bg-transparent">
@@ -722,9 +722,9 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
                     {/* Card View */}
                     {viewMode === 'card' && (
-                        // ✅ 6. ปรับปรุง Card Grid ให้ Scroll ได้และผูก Ref (scrollContainerRef)
                         <div 
                             ref={scrollContainerRef}
+                            onScroll={handleScroll} // ✅ ใส่ onScroll ให้กับ Card Grid ด้วย
                             className="hidden md:grid grid-cols-2 lg:grid-cols-3 gap-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar p-1"
                         >
                             {visiblePositions.map((pos) => (
@@ -737,6 +737,9 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                     isPrivacyMode={isPrivacyMode}
                                     formatPrivacy={formatPrivacy}
                                     getPnLColor={getPnLColor}
+                                    openMenuId={openMenuId}
+                                    setOpenMenuId={setOpenMenuId}
+                                    handleDelete={handleDelete}
                                 />
                             ))}
                             {visiblePositions.length < sortedPositions.length && (
@@ -759,6 +762,9 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                 isPrivacyMode={isPrivacyMode}
                                 formatPrivacy={formatPrivacy}
                                 getPnLColor={getPnLColor}
+                                openMenuId={openMenuId}
+                                setOpenMenuId={setOpenMenuId}
+                                handleDelete={handleDelete}
                             />
                         ))}
                         {visiblePositions.length < sortedPositions.length && (
@@ -774,17 +780,17 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 <Button
                     variant="secondary"
                     size="icon"
-                    className="fixed bottom-6 right-6 z-50 rounded-full shadow-lg bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10"
+                    // ✅ 5. ดันปุ่มขึ้นมาที่ bottom-32 (128px) เพื่อหนี UI Mobile Browser แบบชัวร์ๆ
+                    className="fixed bottom-32 right-5 md:bottom-8 md:right-8 z-[9999] rounded-full shadow-2xl bg-zinc-800 hover:bg-zinc-700 text-white border border-white/20 transition-all duration-300 animate-in fade-in zoom-in pb-[env(safe-area-inset-bottom)]"
                     onClick={scrollToTop}
                 >
-                    <ArrowUp className="h-5 w-5" />
+                    <ArrowUp className="h-6 w-6" />
                 </Button>
             )}
         </div>
     );
 }
 
-// --- Helper Components --- (SummaryCard, PortfolioPositionsMobileCards code as before)
 interface SummaryCardProps {
     title: string;
     value: ReactNode;
@@ -827,7 +833,10 @@ function PortfolioPositionsMobileCards({
     handleCopy,
     isPrivacyMode,
     formatPrivacy,
-    getPnLColor
+    getPnLColor,
+    openMenuId,
+    setOpenMenuId,
+    handleDelete
 }: {
     pos: Position,
     formatCurrency: (v: number) => string,
@@ -835,12 +844,15 @@ function PortfolioPositionsMobileCards({
     handleCopy: (text: string) => void,
     isPrivacyMode: boolean,
     formatPrivacy: (v: string | ReactNode) => ReactNode,
-    getPnLColor: (v: number) => string
+    getPnLColor: (v: number) => string,
+    openMenuId: string | null,
+    setOpenMenuId: (id: string | null) => void,
+    handleDelete: (id: string) => void
 }) {
     return (
-        <Card className="bg-zinc-950 border-white/10">
+        <Card className="bg-zinc-950 border-white/10 relative">
             <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8 bg-zinc-800">
                             <AvatarImage src={pos.token.avatarUrl} />
@@ -851,11 +863,43 @@ function PortfolioPositionsMobileCards({
                             <div className="text-xs text-zinc-500">{pos.token.name}</div>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <div className={cn("font-bold font-mono", getPnLColor(pos.pnlPercent))}>
-                            {formatPrivacy(formatCurrency(pos.value))}
+                    
+                    <div className="flex items-start gap-3">
+                         <div className="text-right">
+                            <div className={cn("font-bold font-mono", getPnLColor(pos.pnlPercent))}>
+                                {formatPrivacy(formatCurrency(pos.value))}
+                            </div>
+                            <div className="text-xs text-zinc-500 font-mono">{isPrivacyMode ? "••••" : pos.quantity.toLocaleString()} {pos.token.symbol}</div>
+                         </div>
+                         
+                         <div className="relative inline-block text-left mt-1">
+                            <button
+                                className="action-menu-trigger text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800 transition-colors"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenMenuId(openMenuId === pos.id ? null : pos.id);
+                                }}
+                            >
+                                <MoreVertical className="h-4 w-4" />
+                            </button>
+
+                            {openMenuId === pos.id && (
+                                <div className="action-menu-content absolute right-0 z-50 mt-2 w-32 origin-top-right rounded-md bg-zinc-900 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none border border-zinc-800">
+                                    <div className="py-1">
+                                        <button
+                                            className="flex w-full items-center px-4 py-2 text-sm text-rose-500 hover:bg-zinc-800"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(pos.id);
+                                            }}
+                                        >
+                                            <Trash2 className="mr-2 h-3 w-3" />
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                        <div className="text-xs text-zinc-500 font-mono">{isPrivacyMode ? "••••" : pos.quantity.toLocaleString()} {pos.token.symbol}</div>
                     </div>
                 </div>
 
