@@ -92,7 +92,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
             return { error }
         }
 
-        toast.success("Welcome back!", {
+        toast.success("Welcome!", {
             description: "Signed in successfully."
         })
 
