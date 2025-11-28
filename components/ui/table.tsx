@@ -3,16 +3,25 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-// เพิ่ม Prop: disableOverflow
+// ✅ แก้ไขส่วนหัวฟังก์ชันเพื่อรับ Prop containerRef และกำหนด Type ให้ถูกต้อง
 function Table({
   className,
   disableOverflow,
+  containerRef, 
   ...props
-}: React.ComponentProps<"table"> & { disableOverflow?: boolean }) {
-  // ถ้าสั่ง disableOverflow = true ให้เรนเดอร์ div ธรรมดา (เพื่อให้ Sticky ทำงานกับหน้าเว็บหลัก)
+}: React.ComponentProps<"table"> & { 
+  disableOverflow?: boolean;
+  containerRef?: React.RefObject<HTMLDivElement | null>; 
+}) {
+  
+  // ✅ ปรับ Logic ให้ใช้ h-full (เต็มกรอบพ่อแม่) และ overflow-auto (เลื่อนได้)
+  // และเอา containerRef มาผูกไว้ที่นี่เพื่อให้ Dashboard สั่งงานได้
   if (disableOverflow) {
     return (
-      <div className="relative w-full overflow-auto max-h-[calc(100vh-200px)] custom-scrollbar">
+      <div 
+        ref={containerRef} 
+        className="relative w-full h-full overflow-auto custom-scrollbar"
+      >
         <table
           data-slot="table"
           className={cn("w-full caption-bottom text-sm", className)}
@@ -22,7 +31,6 @@ function Table({
     )
   }
 
-  // แบบเดิม (มี overflow-x-auto)
   return (
     <div
       data-slot="table-container"

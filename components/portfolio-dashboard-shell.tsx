@@ -14,7 +14,7 @@ import { Search, RefreshCw, Globe, Wallet, ChevronLeft, ChevronRight, Copy, Chev
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/ui/sparkline";
-import { createBrowserClient } from "@supabase/ssr"; // ✅ ใช้ createBrowserClient เพื่อจัดการ Cookies อัตโนมัติ
+import { createBrowserClient } from "@supabase/ssr";
 import AuthButton from "@/components/ui/AuthButton";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 
@@ -46,15 +46,16 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
 
-    // ✅ สร้าง Supabase Client สำหรับ Client Component
+    // ✅ 1. ประกาศ Ref สำหรับกล่อง Scroll ทั้ง 2 แบบ
+    const scrollContainerRef = useRef<HTMLDivElement>(null); // สำหรับ Desktop Table/Card Grid
+    const mainContainerRef = useRef<HTMLDivElement>(null);   // สำหรับ Mobile / Parent Container
+
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
 
-    // ✅ ใช้ State เก็บข้อมูลแทน Props (เพื่อให้เราอัปเดตเองได้โดยไม่ต้องรีเฟรชหน้า)
     const [portfolios, setPortfolios] = useState<Portfolio[]>(initialPortfolios);
-
     const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(initialPortfolios[0]?.id || "all");
     const [searchQuery, setSearchQuery] = useState("");
     const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
@@ -70,19 +71,14 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     const [fngIndex, setFngIndex] = useState<{ value: string, value_classification: string } | null>(null);
     const [gasPrice, setGasPrice] = useState<number | null>(null);
 
-    // ✅ ฟังก์ชันดึงข้อมูลฝั่ง Client (Client-Side Fetching)
-    // ไม่กิน Quota Vercel Server Function เพราะยิงตรงไป Supabase
     const fetchClientData = useCallback(async () => {
         const { data, error } = await supabase.from('positions').select('*');
-
         if (error) {
             console.error("Error fetching data:", error);
             return;
         }
-
         if (!data) return;
 
-        // Map ข้อมูล (Logic เดียวกับ Server เพื่อให้ข้อมูลหน้าตาเหมือนเดิม)
         const positions: Position[] = data.map((row: any) => {
             const price = Number(row.price_usd) || 0;
             const buyPrice = Number(row.entry_price) || 0;
@@ -113,7 +109,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
             };
         });
 
-        // Group ข้อมูลตาม Portfolio Name
         const portfoliosMap = new Map<string, Position[]>();
         positions.forEach(pos => {
             const name = pos.portfolioName;
@@ -129,18 +124,14 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
         setPortfolios(newPortfolios);
 
-        // ถ้า Portfolio ที่เลือกอยู่หายไป (เช่น ลบหมด) ให้ Reset กลับไปอันแรก
         if (selectedPortfolioId !== "all" && !newPortfolios.find(p => p.id === selectedPortfolioId)) {
-            // ถ้ามีพอร์ตเหลือ ให้เลือกอันแรก ถ้าไม่มีเลย ให้เป็น all
             if (newPortfolios.length > 0) setSelectedPortfolioId(newPortfolios[0].id);
             else setSelectedPortfolioId("all");
         }
 
     }, [supabase, selectedPortfolioId]);
 
-    // ✅ Listener สำหรับ Login/Logout แบบ Real-time
     useEffect(() => {
-        // เช็ค User ปัจจุบันก่อน
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             setUser(session?.user ?? null);
@@ -149,22 +140,17 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             setUser(session?.user ?? null);
-
             if (event === 'SIGNED_IN') {
-                // พอ Login ปุ๊บ ดึงข้อมูลใหม่ทันที (Client Fetch) หน้าไม่ขาว ไม่กระพริบ
                 fetchClientData();
             } else if (event === 'SIGNED_OUT') {
-                // พอ Logout ปุ๊บ เคลียร์ข้อมูล (หรือดึงใหม่แบบ Guest ถ้ามี Public Data)
                 setPortfolios([]);
                 fetchClientData();
             }
         });
-
         return () => subscription.unsubscribe();
     }, [supabase, fetchClientData]);
 
     useEffect(() => {
-        // Fetch F&G และ Gas (เหมือนเดิม)
         const fetchFng = async () => {
             try {
                 const res = await fetch('https://api.alternative.me/fng/');
@@ -181,7 +167,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         fetchGas();
     }, []);
 
-    // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (openMenuId && !(event.target as Element).closest('.action-menu-trigger') && !(event.target as Element).closest('.action-menu-content')) {
@@ -192,21 +177,42 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         return () => document.removeEventListener('click', handleClickOutside);
     }, [openMenuId]);
 
-    // แก้ไข handleDelete ให้เรียก fetchClientData แทน router.refresh
+    // ✅ 2. แก้ไขระบบ Scroll Listener ให้รองรับทั้ง Desktop (Inner) และ Mobile (Parent)
+    useEffect(() => {
+        const mainContainer = mainContainerRef.current;
+        const scrollContainer = scrollContainerRef.current;
+
+        const handleScroll = (event: Event) => {
+            const target = event.target as HTMLDivElement;
+            // ถ้าเลื่อนเกิน 300px ให้โชว์ปุ่ม
+            if (target.scrollTop > 300) {
+                setShowBackToTop(true);
+            } else {
+                setShowBackToTop(false);
+            }
+        };
+
+        // ผูก Event กับทั้ง 2 Container (ใครเลื่อนก็ให้ทำงาน)
+        if (mainContainer) mainContainer.addEventListener('scroll', handleScroll);
+        if (scrollContainer) scrollContainer.addEventListener('scroll', handleScroll);
+
+        return () => {
+            if (mainContainer) mainContainer.removeEventListener('scroll', handleScroll);
+            if (scrollContainer) scrollContainer.removeEventListener('scroll', handleScroll);
+        };
+    }, [viewMode]); // ทำงานใหม่เมื่อสลับ viewMode
+
     const handleDelete = async (id: string) => {
         const { error } = await supabase.from('positions').delete().eq('id', id);
-
         if (error) {
             toast.error("Failed to delete position: " + error.message);
         } else {
             toast.success("Position deleted successfully");
             setOpenMenuId(null);
-            // ✅ เรียก Client Fetch แทน router.refresh() ประหยัด Quota
             fetchClientData();
         }
     };
 
-    // Reset visible count when filters change
     useEffect(() => {
         setVisibleCount(50);
     }, [searchQuery, viewMode, sortConfig, selectedPortfolioId]);
@@ -217,20 +223,10 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         }
     }, [viewMode]);
 
-    useEffect(() => {
-        const handleScroll = () => {
-            if (window.scrollY > 300) {
-                setShowBackToTop(true);
-            } else {
-                setShowBackToTop(false);
-            }
-        };
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
-
+    // ✅ 3. แก้ไขฟังก์ชัน ScrollToTop ให้สั่งเลื่อนทั้ง 2 กล่อง
     const scrollToTop = () => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+        mainContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleCopy = (text: string) => {
@@ -239,7 +235,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     };
 
     const handleRefresh = () => {
-        // ✅ ปุ่ม Refresh ก็ดึงผ่าน Client เหมือนกัน
         toast.promise(fetchClientData(), {
             loading: 'Refreshing data...',
             success: 'Data refreshed',
@@ -262,7 +257,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         const symbol = pos.token.symbol ? pos.token.symbol.toLowerCase() : "";
         const name = pos.token.name ? pos.token.name.toLowerCase() : "";
         const address = pos.token.address ? pos.token.address.toLowerCase() : "";
-
         return symbol.includes(searchLower) || name.includes(searchLower) || address.includes(searchLower);
     }) || [];
 
@@ -270,15 +264,12 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         return [...filteredPositions].sort((a, b) => {
             if (!sortConfig) return 0;
             const { key, direction } = sortConfig;
-
             let aValue: any = a[key as keyof Position];
             let bValue: any = b[key as keyof Position];
-
             if (key === 'token') {
                 aValue = a.token.symbol;
                 bValue = b.token.symbol;
             }
-
             if (aValue < bValue) return direction === 'asc' ? -1 : 1;
             if (aValue > bValue) return direction === 'asc' ? 1 : -1;
             return 0;
@@ -289,7 +280,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
         return sortedPositions.slice(0, visibleCount);
     }, [sortedPositions, visibleCount]);
 
-    // Intersection Observer
     useEffect(() => {
         const observer = new IntersectionObserver(
             (entries) => {
@@ -299,16 +289,13 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
             },
             { threshold: 0.1 }
         );
-
         const currentMobileTarget = mobileTarget.current;
         const currentDesktopTarget = desktopTarget.current;
-
         if (viewMode === 'card' && currentMobileTarget) {
             observer.observe(currentMobileTarget);
         } else if (viewMode === 'list' && currentDesktopTarget) {
             observer.observe(currentDesktopTarget);
         }
-
         return () => {
             if (currentMobileTarget) observer.unobserve(currentMobileTarget);
             if (currentDesktopTarget) observer.unobserve(currentDesktopTarget);
@@ -332,7 +319,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     const getPnLColor = (val: number) => {
         if (val > 0) return "text-emerald-500";
         if (val < 0) return "text-rose-500";
-        return "text-zinc-400"; // Neutral color
+        return "text-zinc-400";
     };
 
     const formatPrivacy = (val: string | ReactNode) => {
@@ -341,7 +328,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
 
     return (
         <div className="flex min-h-screen w-full flex-col md:flex-row bg-[#09090b] text-zinc-100 font-sans relative">
-
+            
             {/* Mobile Header */}
             <div className="md:hidden flex-none flex flex-col gap-4 p-4 border-b border-white/10 bg-[#09090b]">
                 <div className="flex items-center justify-between">
@@ -349,8 +336,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         <Wallet className="h-5 w-5" />
                         <span>Portfolio</span>
                     </div>
-
-                    {/* Mobile Widgets */}
                     <div className="flex items-center gap-3 ml-auto mr-2">
                         {fngIndex && (
                             <div className="flex items-center gap-1 bg-zinc-900/50 rounded px-2 py-1 border border-white/5">
@@ -367,8 +352,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                             </div>
                         )}
                     </div>
-
-                    {/* Auth Button */}
                     <div className="w-fit">
                         <AuthButton />
                     </div>
@@ -388,26 +371,14 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
             </div>
 
             {/* Desktop Sidebar (Sticky) */}
-            <aside
-                className={cn(
-                    "hidden md:flex flex-col border-r border-white/10 bg-[#09090b] transition-all duration-300 sticky top-0 h-screen",
-                    isCollapsed ? "w-16 items-center py-6" : "w-64 p-6"
-                )}
-            >
+            <aside className={cn("hidden md:flex flex-col border-r border-white/10 bg-[#09090b] transition-all duration-300 sticky top-0 h-screen", isCollapsed ? "w-16 items-center py-6" : "w-64 p-6")}>
                 <div className="flex items-center justify-between mb-6 w-full">
                     {!isCollapsed && <h2 className="text-lg font-semibold tracking-tight text-white">Portfolio</h2>}
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setIsCollapsed(!isCollapsed)}
-                        className="text-zinc-400 hover:text-white ml-auto"
-                    >
+                    <Button variant="ghost" size="icon" onClick={() => setIsCollapsed(!isCollapsed)} className="text-zinc-400 hover:text-white ml-auto">
                         {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
                     </Button>
                 </div>
-
                 <div className="w-full space-y-4">
-                    {/* ✅ ปรับปรุงดีไซน์ปุ่มเลือกพอร์ตเป็น Squircle */}
                     {isCollapsed ? (
                         <div className="flex flex-col gap-3 items-center pt-2">
                             <TooltipProvider>
@@ -416,19 +387,8 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                     return (
                                         <Tooltip key={p.id} delayDuration={0}>
                                             <TooltipTrigger asChild>
-                                                <button
-                                                    onClick={() => setSelectedPortfolioId(p.id)}
-                                                    className={cn(
-                                                        "relative w-10 h-10 flex items-center justify-center text-xs font-bold transition-all duration-200 border",
-                                                        "rounded-xl", // ✅ ดีไซน์สี่เหลี่ยมมน (Squircle)
-                                                        isActive
-                                                            ? "bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.15)] scale-105 z-10" // Active: ขาว + เรืองแสง
-                                                            : "bg-zinc-900/40 text-zinc-500 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-700" // Inactive: โปร่ง
-                                                    )}
-                                                >
+                                                <button onClick={() => setSelectedPortfolioId(p.id)} className={cn("relative w-10 h-10 flex items-center justify-center text-xs font-bold transition-all duration-200 border", "rounded-xl", isActive ? "bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.15)] scale-105 z-10" : "bg-zinc-900/40 text-zinc-500 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-700")}>
                                                     {p.name.substring(0, 2).toUpperCase()}
-
-                                                    {/* Active Indicator (จุดเขียว) */}
                                                     {isActive && (
                                                         <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                                                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -437,8 +397,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                                     )}
                                                 </button>
                                             </TooltipTrigger>
-
-                                            {/* Tooltip บอกชื่อเต็ม */}
                                             <TooltipContent side="right" sideOffset={10} className="z-[9999] font-medium bg-zinc-950 border-zinc-800 text-zinc-200">
                                                 {p.name}
                                             </TooltipContent>
@@ -462,12 +420,8 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </Select>
                     )}
                 </div>
-
-                {/* Sidebar Widgets */}
                 <div className={cn("mt-auto space-y-3 w-full flex flex-col items-center", "mb-2", isCollapsed ? "items-center mt-4" : "items-stretch mb-4", isCollapsed ? "px-2" : "px-4 py-3")}>
                     <TooltipProvider>
-
-                        {/* Fear & Greed */}
                         {fngIndex && (
                             isCollapsed ? (
                                 <Tooltip delayDuration={0}>
@@ -479,9 +433,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent side="right" sideOffset={10} className="bg-zinc-950 border-zinc-800 text-zinc-300 z-[9999]">
-                                        <span className={Number(fngIndex.value) > 50 ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
-                                            {fngIndex.value}
-                                        </span>{" "}
+                                        <span className={Number(fngIndex.value) > 50 ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>{fngIndex.value}</span>{" "}
                                         <span className="text-zinc-500">({fngIndex.value_classification})</span>
                                     </TooltipContent>
                                 </Tooltip>
@@ -492,16 +444,12 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                         <span className="text-xs font-medium text-zinc-400">Fear & Greed</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className={cn("text-lg font-bold", Number(fngIndex.value) > 50 ? "text-emerald-500" : "text-rose-500")}>
-                                            {fngIndex.value}
-                                        </span>
+                                        <span className={cn("text-lg font-bold", Number(fngIndex.value) > 50 ? "text-emerald-500" : "text-rose-500")}>{fngIndex.value}</span>
                                         <span className="text-xs text-zinc-500">{fngIndex.value_classification}</span>
                                     </div>
                                 </div>
                             )
                         )}
-
-                        {/* Gas Price */}
                         {gasPrice && (
                             isCollapsed ? (
                                 <Tooltip delayDuration={0}>
@@ -528,8 +476,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         )}
                     </TooltipProvider>
                 </div>
-
-                {/* Desktop Auth Button */}
                 <div className={cn("pt-2.5 border-t border-white/10", !isCollapsed ? "mt-0" : "mt-auto")}>
                     <div className={cn(isCollapsed ? "flex justify-center" : "")}>
                         <AuthButton isCollapsed={isCollapsed} />
@@ -537,12 +483,14 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                 </div>
             </aside>
 
-            {/* Main Content */}
-            <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {/* Main Content - ✅ 4. ปรับปรุง Layout หลัก แก้ Free Space & Scrollbar */}
+            <main className="flex-1 flex flex-col min-w-0 h-[100dvh] overflow-hidden">
 
-                {/* Content Container */}
-                <div className="p-4 md:p-8 space-y-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                {/* Content Container - ✅ เพิ่ม Ref (mainContainerRef) เพื่อจับ Scroll บนมือถือ */}
+                <div ref={mainContainerRef} className="flex flex-col h-full p-4 md:p-8 gap-6 overflow-y-auto md:overflow-hidden">
+                    
+                    {/* Header (Flex-none เพื่อไม่ให้ยืดหด) */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 flex-none">
                         <div>
                             <div className="flex items-center gap-3">
                                 <h1 className="text-2xl font-bold text-white">Maharaja888 Portfolio</h1>
@@ -558,7 +506,8 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* Summary Cards (Grid แบบ Responsive + Flex-none) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 flex-none">
                         <SummaryCard title="TOTAL INVESTED" value={formatPrivacy(formatCurrency(totalInvested))} />
                         <SummaryCard title="CURRENT VALUE" value={formatPrivacy(formatCurrency(totalValue))} highlight />
                         <SummaryCard
@@ -570,8 +519,8 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         />
                     </div>
 
-                    {/* Toolbar */}
-                    <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                    {/* Toolbar (Flex-none) */}
+                    <div className="flex flex-col md:flex-row gap-4 justify-between items-center flex-none">
                         <div className="flex items-center gap-2 w-full md:w-auto">
                             <div className="relative flex-1 md:w-72">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-500" />
@@ -613,10 +562,11 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </div>
                     </div>
 
-                    {/* Content Area: Tables & Cards */}
+                    {/* Content Area: Tables (Flex-1 ยืดเต็มพื้นที่) */}
                     {viewMode === 'list' && (
-                        <div className="hidden md:block rounded-lg border border-white/10 bg-zinc-950/50 min-h-[500px]">
-                            <Table disableOverflow>
+                        <div className="hidden md:block rounded-lg border border-white/10 bg-zinc-950/50 flex-1 min-h-0">
+                            {/* ✅ 5. ส่ง Ref เข้าไปใน Table */}
+                            <Table disableOverflow containerRef={scrollContainerRef}>
                                 <TableHeader className="sticky top-0 z-40 bg-[#09090b] shadow-sm">
                                     <TableRow className="border-white/5 hover:bg-transparent">
                                         <TableHead className="text-zinc-400 cursor-pointer" onClick={() => handleSort('token')}>
@@ -700,11 +650,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                                                 <Globe className="h-3 w-3" />
                                                                 {pos.token.network}
                                                             </Badge>
-                                                            <button
-                                                                onClick={() => handleCopy(pos.token.address || pos.token.network)}
-                                                                className="hover:text-white transition-colors text-zinc-500"
-                                                                title="Copy address"
-                                                            >
+                                                            <button onClick={() => handleCopy(pos.token.address || pos.token.network)} className="hover:text-white transition-colors text-zinc-500" title="Copy address">
                                                                 <Copy className="h-3 w-3" />
                                                             </button>
                                                         </div>
@@ -716,18 +662,10 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 {pos.token.chartUrl ? (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="h-8 w-8 p-0 text-zinc-400 hover:text-white hover:bg-zinc-800"
-                                                        onClick={() => window.open(pos.token.chartUrl, '_blank')}
-                                                        title="View on Chart"
-                                                    >
+                                                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-zinc-400 hover:text-white hover:bg-zinc-800" onClick={() => window.open(pos.token.chartUrl, '_blank')} title="View on Chart">
                                                         <BarChart2 className="h-4 w-4" />
                                                     </Button>
-                                                ) : (
-                                                    <span className="text-xs text-zinc-600">-</span>
-                                                )}
+                                                ) : (<span className="text-xs text-zinc-600">-</span>)}
                                             </TableCell>
                                             <TableCell className="text-center font-mono text-zinc-300">
                                                 {formatPrivacy(formatCryptoPrice(pos.price))}
@@ -741,7 +679,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-center font-mono text-zinc-300">{isPrivacyMode ? "••••" : pos.quantity.toLocaleString()}</TableCell>
-
                                             <TableCell className="text-center">
                                                 <div className={cn("font-mono font-medium flex items-center justify-center gap-1", getPnLColor(pos.pnlPercent))}>
                                                     {pos.pnlPercent > 0 && <Triangle className="h-2 w-2 fill-current" />}
@@ -754,26 +691,13 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                             </TableCell>
                                             <TableCell className="text-center relative">
                                                 <div className="relative inline-block text-left">
-                                                    <button
-                                                        className="action-menu-trigger text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800 transition-colors"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setOpenMenuId(openMenuId === pos.id ? null : pos.id);
-                                                        }}
-                                                    >
+                                                    <button className="action-menu-trigger text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800 transition-colors" onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === pos.id ? null : pos.id); }}>
                                                         <MoreVertical className="h-4 w-4" />
                                                     </button>
-
                                                     {openMenuId === pos.id && (
                                                         <div className="action-menu-content absolute right-0 z-50 mt-2 w-32 origin-top-right rounded-md bg-zinc-900 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none border border-zinc-800">
                                                             <div className="py-1">
-                                                                <button
-                                                                    className="flex w-full items-center px-4 py-2 text-sm text-rose-500 hover:bg-zinc-800"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleDelete(pos.id);
-                                                                    }}
-                                                                >
+                                                                <button className="flex w-full items-center px-4 py-2 text-sm text-rose-500 hover:bg-zinc-800" onClick={(e) => { e.stopPropagation(); handleDelete(pos.id); }}>
                                                                     <Trash2 className="mr-2 h-3 w-3" />
                                                                     Delete
                                                                 </button>
@@ -784,7 +708,6 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                                             </TableCell>
                                         </TableRow>
                                     ))}
-                                    {/* Desktop Sentinel */}
                                     {visiblePositions.length < sortedPositions.length && (
                                         <TableRow ref={desktopTarget}>
                                             <TableCell colSpan={9} className="text-center py-4 text-zinc-500">
@@ -797,8 +720,13 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </div>
                     )}
 
+                    {/* Card View */}
                     {viewMode === 'card' && (
-                        <div className="hidden md:grid grid-cols-2 lg:grid-cols-3 gap-4">
+                        // ✅ 6. ปรับปรุง Card Grid ให้ Scroll ได้และผูก Ref (scrollContainerRef)
+                        <div 
+                            ref={scrollContainerRef}
+                            className="hidden md:grid grid-cols-2 lg:grid-cols-3 gap-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar p-1"
+                        >
                             {visiblePositions.map((pos) => (
                                 <PortfolioPositionsMobileCards
                                     key={pos.id}
@@ -819,6 +747,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
                         </div>
                     )}
 
+                    {/* Mobile Card View (Always Visible on Mobile) */}
                     <div className="md:hidden space-y-4 pb-20">
                         {visiblePositions.map((pos) => (
                             <PortfolioPositionsMobileCards
@@ -855,7 +784,7 @@ export function PortfolioDashboardShell({ portfolios: initialPortfolios }: Portf
     );
 }
 
-// --- Helper Components ---
+// --- Helper Components --- (SummaryCard, PortfolioPositionsMobileCards code as before)
 interface SummaryCardProps {
     title: string;
     value: ReactNode;
@@ -867,23 +796,23 @@ interface SummaryCardProps {
 
 function SummaryCard({ title, value, subValue, highlight, isPnL, pnlValue }: SummaryCardProps) {
     return (
-        <Card className="bg-zinc-950 border-white/10">
-            <CardHeader className="flex flex-col items-center justify-center space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-zinc-400">{title}</CardTitle>
+        <Card className="bg-zinc-950 border-white/10 overflow-hidden">
+            <CardHeader className="flex flex-col items-center justify-center space-y-0 pb-2 px-1">
+                <CardTitle className="text-xs md:text-sm font-medium text-zinc-400 text-center truncate w-full">{title}</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col items-center">
-                <div className={cn("text-xl md:text-2xl font-bold font-mono", highlight ? "text-white" : "text-zinc-200", isPnL && (pnlValue !== undefined ? (pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "text-zinc-400") : "text-zinc-200"))}>
+            <CardContent className="flex flex-col items-center w-full px-2">
+                <div className={cn("text-lg sm:text-xl md:text-2xl font-bold font-mono truncate w-full text-center", highlight ? "text-white" : "text-zinc-200", isPnL && (pnlValue !== undefined ? (pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "text-zinc-400") : "text-zinc-200"))} title={typeof value === 'string' ? value : undefined}>
                     {value}
                 </div>
                 {subValue && (
-                    <div className={cn("flex items-center gap-1 text-xs font-mono mt-1", isPnL && (pnlValue !== undefined ? (pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "text-zinc-400") : "text-zinc-200"))}>
+                    <div className={cn("flex items-center gap-1 text-xs font-mono mt-1 truncate max-w-full", isPnL && (pnlValue !== undefined ? (pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "text-zinc-400") : "text-zinc-200"))}>
                         {isPnL && pnlValue !== undefined && (
                             <>
-                                {pnlValue > 0 && <Triangle className="h-2 w-2 fill-current" />}
-                                {pnlValue < 0 && <Triangle className="h-2 w-2 fill-current rotate-180" />}
+                                {pnlValue > 0 && <Triangle className="h-2 w-2 fill-current shrink-0" />}
+                                {pnlValue < 0 && <Triangle className="h-2 w-2 fill-current rotate-180 shrink-0" />}
                             </>
                         )}
-                        {subValue}
+                        <span className="truncate">{subValue}</span>
                     </div>
                 )}
             </CardContent>
